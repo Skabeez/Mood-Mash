@@ -45,7 +45,6 @@ const ProfileScreen: React.FC = () => {
   
   // Settings
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-  const [darkMode, setDarkMode] = useState(true);
   const [explicitContent, setExplicitContent] = useState(true);
   
   // Modals
@@ -57,6 +56,7 @@ const ProfileScreen: React.FC = () => {
   
   // Auth & UI states
   const [loading, setLoading] = useState(true);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [alert, setAlert] = useState<{
     visible: boolean;
     type: 'success' | 'error' | 'warning' | 'info';
@@ -120,7 +120,7 @@ const ProfileScreen: React.FC = () => {
         // Get user favorites
         const userFavorites = await getUserFavorites(currentUser.id);
         if (userFavorites && userFavorites.length > 0) {
-          const favIds = new Set(userFavorites.map((f: any) => f.id));
+          const favIds = new Set(userFavorites.map((f: any) => f.youtubeId));
           setFavorites(userFavorites);
           setFavoriteIds(favIds);
         }
@@ -147,15 +147,15 @@ const ProfileScreen: React.FC = () => {
     if (!userId) return;
 
     try {
-      if (favoriteIds.has(song.id)) {
+      if (favoriteIds.has(song.youtubeId)) {
         // Remove from favorites
-        const { error } = await removeFavoriteSong(userId, song.id);
+        const { error } = await removeFavoriteSong(userId, song.youtubeId);
         if (error) throw error;
         
-        setFavorites((prev) => prev.filter((f) => f.id !== song.id));
+        setFavorites((prev) => prev.filter((f) => f.youtubeId !== song.youtubeId));
         setFavoriteIds((prev) => {
           const newSet = new Set(prev);
-          newSet.delete(song.id);
+          newSet.delete(song.youtubeId);
           return newSet;
         });
       } else {
@@ -169,7 +169,7 @@ const ProfileScreen: React.FC = () => {
         if (error) throw error;
         
         setFavorites((prev) => [...prev, song]);
-        setFavoriteIds((prev) => new Set([...prev, song.id]));
+        setFavoriteIds((prev) => new Set([...prev, song.youtubeId]));
       }
     } catch (error) {
       console.error('Error toggling favorite:', error);
@@ -202,7 +202,6 @@ const ProfileScreen: React.FC = () => {
     if (!userId) return;
 
     try {
-      setLoading(true);
       const { error } = await updateUserProfile(userId, {
         username: editName,
         email: editEmail,
@@ -234,18 +233,48 @@ const ProfileScreen: React.FC = () => {
         title: 'Error',
         message: 'Failed to save profile',
       });
-    } finally {
-      setLoading(false);
     }
   };
 
-  const handleClearCache = () => {
-    setAlert({
-      visible: true,
-      type: 'success',
-      title: 'Cache Cleared',
-      message: 'All cached data has been cleared successfully!',
-    });
+  const handleClearCache = async () => {
+    try {
+      setAlert({
+        visible: true,
+        type: 'success',
+        title: 'Cache Cleared',
+        message: 'Cache has been cleared successfully!',
+      });
+    } catch (error) {
+      console.error('Error clearing cache:', error);
+    }
+  };
+
+  const handleToggleNotifications = async (value: boolean) => {
+    setNotificationsEnabled(value);
+    if (userId) {
+      try {
+        await updateUserProfile(userId, {
+          notifications_enabled: value,
+        });
+      } catch (error) {
+        console.error('Error updating notifications:', error);
+        setNotificationsEnabled(!value);
+      }
+    }
+  };
+
+  const handleToggleExplicitContent = async (value: boolean) => {
+    setExplicitContent(value);
+    if (userId) {
+      try {
+        await updateUserProfile(userId, {
+          explicit_filter: !value,
+        });
+      } catch (error) {
+        console.error('Error updating explicit filter:', error);
+        setExplicitContent(!value);
+      }
+    }
   };
 
   const handleAbout = () => {
@@ -269,7 +298,7 @@ const ProfileScreen: React.FC = () => {
   };
 
   const handleConfirmLogout = async () => {
-    setLoading(true);
+    setIsLoggingOut(true);
     try {
       if (supabase) {
         await supabase.auth.signOut();
@@ -284,7 +313,7 @@ const ProfileScreen: React.FC = () => {
         message: 'Unable to sign out. Please try again.',
       });
     } finally {
-      setLoading(false);
+      setIsLoggingOut(false);
     }
   };
 
@@ -299,13 +328,8 @@ const ProfileScreen: React.FC = () => {
   };
 
   return (
-    <View style={styles.container}>
-      <LinearGradient
-        colors={['#030712', '#111827']} // gray-950 to gray-900
-        style={StyleSheet.absoluteFill}
-      />
-
-      <LoadingOverlay visible={loading} message="Signing out..." />
+    <View style={[styles.container, { backgroundColor: '#030712' }]}>
+      <LoadingOverlay visible={isLoggingOut} message="Signing out..." />
       
       <CustomAlert
         visible={alert.visible}
@@ -330,137 +354,123 @@ const ProfileScreen: React.FC = () => {
           showsVerticalScrollIndicator={false}
         >
           {/* Profile Header */}
-          <LinearGradient
-            colors={['rgba(88, 28, 135, 0.3)', 'rgba(13, 148, 136, 0.3)']} // purple-900/30 to teal-900/30
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.header}
-          >
-            <View style={styles.headerContent}>
-              {/* Avatar */}
-              {user.avatarUrl ? (
-                <Image source={{ uri: user.avatarUrl }} style={styles.avatar} />
-              ) : (
-                <LinearGradient
-                  colors={['#A855F7', '#14B8A6']} // purple-500 to teal-500
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.avatar}
-                >
-                  <Text style={styles.initials}>{user.initials}</Text>
-                </LinearGradient>
-              )}
-
-              {/* User Info */}
-              <View style={styles.userInfo}>
-                <Text style={styles.userName}>{user.name}</Text>
-                <Text style={styles.userSubtitle}>Your personal music companion</Text>
+          <View style={[styles.header, { borderBottomColor: 'rgba(55, 65, 81, 0.3)' }]}>
+            <View style={styles.headerTop}>
+              <View style={styles.headerLeft}>
+                <Text style={[styles.headerGreeting, { color: '#9CA3AF' }]}>Profile</Text>
+                <Text style={[styles.userName, { color: '#FFFFFF' }]}>{user.name}</Text>
               </View>
-
-              {/* Settings Button */}
               <Pressable
-                style={({ pressed }) => [styles.settingsButton, pressed && styles.pressed]}
+                style={({ pressed }) => [styles.editButton, pressed && styles.pressed]}
                 onPress={() => setEditProfileModal(true)}
               >
-                <Ionicons name="settings-outline" size={20} color="#9CA3AF" />
+                <Ionicons name="create-outline" size={20} color="#9333EA" />
               </Pressable>
             </View>
-          </LinearGradient>
+            <Text style={[styles.userEmail, { color: '#9CA3AF' }]}>{user.email}</Text>
+          </View>
 
           <View style={styles.content}>
             {/* Stats Section */}
-            <View style={styles.statsContainer}>
-              <StatCard
-                title="Highlights"
-                value="12"
-                subtitle="songs discovered"
-                icon="musical-notes"
-                gradientColors={['rgba(147, 51, 234, 0.3)', 'rgba(147, 51, 234, 0.2)']}
-                iconColor="#C084FC"
-                borderColor="rgba(168, 85, 247, 0.2)"
-              />
-              <StatCard
-                title="Genres"
-                value={favoriteGenres.length}
-                subtitle="explored"
-                icon="albums"
-                gradientColors={['rgba(236, 72, 153, 0.3)', 'rgba(236, 72, 153, 0.2)']}
-                iconColor="#F9A8D4"
-                borderColor="rgba(236, 72, 153, 0.2)"
-              />
-              <StatCard
-                title="Hours"
-                value="8.5"
-                subtitle="this week"
-                icon="time"
-                gradientColors={['rgba(13, 148, 136, 0.3)', 'rgba(13, 148, 136, 0.2)']}
-                iconColor="#5EEAD4"
-                borderColor="rgba(13, 148, 136, 0.2)"
-              />
+            <View style={styles.statsSection}>
+              <Text style={[styles.statsTitle, { color: '#9CA3AF' }]}>Your Stats</Text>
+              <View style={styles.statsContainer}>
+                <StatCard
+                  title="Favorites"
+                  value={String(favorites.length)}
+                  subtitle="saved"
+                  icon="heart"
+                  gradientColors={['rgba(236, 72, 153, 0.2)', 'rgba(236, 72, 153, 0.1)']}
+                  iconColor="#EC4899"
+                  borderColor="rgba(236, 72, 153, 0.25)"
+                />
+                <StatCard
+                  title="Genres"
+                  value={String(favoriteGenres.length)}
+                  subtitle="explored"
+                  icon="albums"
+                  gradientColors={['rgba(147, 51, 234, 0.2)', 'rgba(147, 51, 234, 0.1)']}
+                  iconColor="#9333EA"
+                  borderColor="rgba(147, 51, 234, 0.25)"
+                />
+                <StatCard
+                  title="This Week"
+                  value="24"
+                  subtitle="played"
+                  icon="play-circle"
+                  gradientColors={['rgba(13, 148, 136, 0.2)', 'rgba(13, 148, 136, 0.1)']}
+                  iconColor="#14B8A6"
+                  borderColor="rgba(13, 148, 136, 0.25)"
+                />
+              </View>
             </View>
 
             {/* Music Preferences */}
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
-                <Ionicons name="musical-notes" size={20} color="#5EEAD4" />
-                <Text style={styles.sectionTitle}>Your Music Taste</Text>
+                <Text style={[styles.sectionTitle, { color: '#D1D5DB' }]}>Music Preferences</Text>
               </View>
 
               {/* Favorite Genres */}
               <View style={styles.preferenceCard}>
-                <Text style={styles.preferenceCardTitle}>Favorite Genres</Text>
+                <View style={styles.preferenceCardHeader}>
+                  <Text style={styles.preferenceCardTitle}>Favorite Genres</Text>
+                  <Pressable onPress={() => setAddGenreModal(true)}>
+                    <Ionicons name="add-circle" size={24} color="#9333EA" />
+                  </Pressable>
+                </View>
                 <View style={styles.chipContainer}>
-                  {favoriteGenres.map((genre) => (
-                    <PreferenceChip
-                      key={genre}
-                      label={genre}
-                      onRemove={() => handleRemoveGenre(genre)}
-                      backgroundColor="rgba(147, 51, 234, 0.3)"
-                      textColor="#D8B4FE"
-                      borderColor="rgba(168, 85, 247, 0.3)"
-                    />
-                  ))}
-                  <PreferenceChip
-                    label="+ Add Genre"
-                    onPress={() => setAddGenreModal(true)}
-                    backgroundColor="rgba(55, 65, 81, 0.5)"
-                    textColor="#9CA3AF"
-                    borderColor="rgba(75, 85, 99, 0.5)"
-                  />
+                  {favoriteGenres.length > 0 ? (
+                    favoriteGenres.map((genre) => (
+                      <PreferenceChip
+                        key={genre}
+                        label={genre}
+                        onRemove={() => handleRemoveGenre(genre)}
+                        backgroundColor="rgba(147, 51, 234, 0.2)"
+                        textColor="#C084FC"
+                        borderColor="rgba(147, 51, 234, 0.4)"
+                      />
+                    ))
+                  ) : (
+                    <Text style={styles.emptyChipText}>No genres added yet. Tap + to add.</Text>
+                  )}
                 </View>
               </View>
 
               {/* Favorite Moods */}
-              <View style={styles.preferenceCard}>
-                <Text style={styles.preferenceCardTitle}>Favorite Moods</Text>
-                <View style={styles.chipContainer}>
-                  {favoriteMoods.map((mood) => (
-                    <PreferenceChip
-                      key={mood}
-                      label={mood}
-                      onRemove={() => handleRemoveMood(mood)}
-                      backgroundColor="rgba(13, 148, 136, 0.3)"
-                      textColor="#99F6E4"
-                      borderColor="rgba(20, 184, 166, 0.3)"
-                    />
-                  ))}
+              {favoriteMoods.length > 0 && (
+                <View style={styles.preferenceCard}>
+                  <Text style={styles.preferenceCardTitle}>Favorite Moods</Text>
+                  <View style={styles.chipContainer}>
+                    {favoriteMoods.map((mood) => (
+                      <PreferenceChip
+                        key={mood}
+                        label={mood}
+                        onRemove={() => handleRemoveMood(mood)}
+                        backgroundColor="rgba(13, 148, 136, 0.2)"
+                        textColor="#5EEAD4"
+                        borderColor="rgba(13, 148, 136, 0.4)"
+                      />
+                    ))}
+                  </View>
                 </View>
-              </View>
+              )}
             </View>
 
             {/* Saved Favorites */}
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
-                <Ionicons name="heart" size={20} color="#F9A8D4" />
-                <Text style={styles.sectionTitle}>Saved Favorites</Text>
-                <Text style={styles.sectionCount}>{favorites.size} songs</Text>
+                <Text style={[styles.sectionTitle, { color: '#D1D5DB' }]}>Saved Favorites</Text>
+                {favorites.length > 0 && (
+                  <Text style={[styles.sectionCount, { color: '#9CA3AF' }]}>{favorites.length}</Text>
+                )}
               </View>
 
               {favoriteSongs.length > 0 ? (
                 <View style={styles.favoritesCard}>
                   {favoriteSongs.map((song, index) => (
                     <View
-                      key={song.id}
+                      key={song.youtubeId}
                       style={[
                         styles.favoriteItem,
                         index !== favoriteSongs.length - 1 && styles.favoriteItemBorder,
@@ -495,51 +505,12 @@ const ProfileScreen: React.FC = () => {
               )}
             </View>
 
-            {/* Connected Accounts */}
-            <View style={styles.section}>
-              <View style={styles.sectionHeader}>
-                <Ionicons name="link" size={20} color="#9CA3AF" />
-                <Text style={styles.sectionTitle}>Connected Accounts</Text>
-              </View>
-
-              <SettingItem
-                icon="musical-note"
-                title={lastfmConnected ? `Last.fm: ${lastfmUsername}` : 'Connect Last.fm'}
-                subtitle={lastfmConnected ? 'Tap to disconnect' : 'Sync your listening history'}
-                rightElement="custom"
-                customRightElement={
-                  lastfmConnected ? (
-                    <Ionicons name="checkmark-circle" size={24} color="#10B981" />
-                  ) : (
-                    <Ionicons name="add-circle-outline" size={24} color="#9CA3AF" />
-                  )
-                }
-                onPress={handleConnectLastfm}
-                iconColor="#EF4444"
-              />
-
-              <SettingItem
-                icon="logo-youtube"
-                title={youtubeConnected ? 'YouTube Connected' : 'Connect YouTube'}
-                subtitle={youtubeConnected ? 'Tap to disconnect' : 'Play songs directly'}
-                rightElement="custom"
-                customRightElement={
-                  youtubeConnected ? (
-                    <Ionicons name="checkmark-circle" size={24} color="#10B981" />
-                  ) : (
-                    <Ionicons name="add-circle-outline" size={24} color="#9CA3AF" />
-                  )
-                }
-                onPress={() => setYoutubeConnected(!youtubeConnected)}
-                iconColor="#EF4444"
-              />
-            </View>
+            {/* Connected Accounts - Removed */}
 
             {/* Settings */}
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
-                <Ionicons name="options" size={20} color="#9CA3AF" />
-                <Text style={styles.sectionTitle}>Settings</Text>
+                <Text style={[styles.sectionTitle, { color: '#D1D5DB' }]}>Settings</Text>
               </View>
 
               <SettingItem
@@ -548,18 +519,8 @@ const ProfileScreen: React.FC = () => {
                 subtitle="Get updates about new recommendations"
                 rightElement="switch"
                 switchValue={notificationsEnabled}
-                onSwitchChange={setNotificationsEnabled}
+                onSwitchChange={handleToggleNotifications}
                 iconColor="#F59E0B"
-              />
-
-              <SettingItem
-                icon="moon"
-                title="Dark Mode"
-                subtitle="Always use dark theme"
-                rightElement="switch"
-                switchValue={darkMode}
-                onSwitchChange={setDarkMode}
-                iconColor="#8B5CF6"
               />
 
               <SettingItem
@@ -568,7 +529,7 @@ const ProfileScreen: React.FC = () => {
                 subtitle="Allow explicit lyrics"
                 rightElement="switch"
                 switchValue={explicitContent}
-                onSwitchChange={setExplicitContent}
+                onSwitchChange={handleToggleExplicitContent}
                 iconColor="#EF4444"
               />
 
@@ -610,17 +571,13 @@ const ProfileScreen: React.FC = () => {
         presentationStyle="pageSheet"
         onRequestClose={() => setEditProfileModal(false)}
       >
-        <View style={styles.modalContainer}>
-          <LinearGradient
-            colors={['#030712', '#111827']}
-            style={StyleSheet.absoluteFill}
-          />
+        <View style={[styles.modalContainer, { backgroundColor: '#030712' }]}>
           <SafeAreaView style={styles.modalSafeArea}>
-            <View style={styles.modalHeader}>
+            <View style={[styles.modalHeader, { borderBottomColor: 'rgba(55, 65, 81, 0.3)' }]}>
               <Pressable onPress={() => setEditProfileModal(false)}>
-                <Text style={styles.modalCancel}>Cancel</Text>
+                <Text style={[styles.modalCancel, { color: '#9CA3AF' }]}>Cancel</Text>
               </Pressable>
-              <Text style={styles.modalTitle}>Edit Profile</Text>
+              <Text style={[styles.modalTitle, { color: '#FFFFFF' }]}>Edit Profile</Text>
               <Pressable onPress={handleSaveProfile}>
                 <Text style={styles.modalSave}>Save</Text>
               </Pressable>
@@ -628,24 +585,32 @@ const ProfileScreen: React.FC = () => {
 
             <View style={styles.modalContent}>
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Name</Text>
+                <Text style={[styles.inputLabel, { color: '#D1D5DB' }]}>Name</Text>
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, { 
+                    backgroundColor: 'rgba(31, 41, 55, 0.4)',
+                    color: '#FFFFFF',
+                    borderColor: 'rgba(55, 65, 81, 0.3)' 
+                  }]}
                   value={editName}
                   onChangeText={setEditName}
                   placeholder="Enter your name"
-                  placeholderTextColor="#6B7280"
+                  placeholderTextColor="#9CA3AF"
                 />
               </View>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Email</Text>
+                <Text style={[styles.inputLabel, { color: '#D1D5DB' }]}>Email</Text>
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, { 
+                    backgroundColor: 'rgba(31, 41, 55, 0.4)',
+                    color: '#FFFFFF',
+                    borderColor: 'rgba(55, 65, 81, 0.3)' 
+                  }]}
                   value={editEmail}
                   onChangeText={setEditEmail}
                   placeholder="Enter your email"
-                  placeholderTextColor="#6B7280"
+                  placeholderTextColor="#9CA3AF"
                   keyboardType="email-address"
                   autoCapitalize="none"
                 />
@@ -662,17 +627,13 @@ const ProfileScreen: React.FC = () => {
         presentationStyle="pageSheet"
         onRequestClose={() => setAddGenreModal(false)}
       >
-        <View style={styles.modalContainer}>
-          <LinearGradient
-            colors={['#030712', '#111827']}
-            style={StyleSheet.absoluteFill}
-          />
+        <View style={[styles.modalContainer, { backgroundColor: '#030712' }]}>
           <SafeAreaView style={styles.modalSafeArea}>
-            <View style={styles.modalHeader}>
+            <View style={[styles.modalHeader, { borderBottomColor: 'rgba(55, 65, 81, 0.3)' }]}>
               <Pressable onPress={() => setAddGenreModal(false)}>
-                <Text style={styles.modalCancel}>Cancel</Text>
+                <Text style={[styles.modalCancel, { color: '#9CA3AF' }]}>Cancel</Text>
               </Pressable>
-              <Text style={styles.modalTitle}>Add Genre</Text>
+              <Text style={[styles.modalTitle, { color: '#FFFFFF' }]}>Add Genre</Text>
               <Pressable onPress={handleAddGenre}>
                 <Text style={styles.modalSave}>Add</Text>
               </Pressable>
@@ -680,13 +641,17 @@ const ProfileScreen: React.FC = () => {
 
             <View style={styles.modalContent}>
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Genre Name</Text>
+                <Text style={[styles.inputLabel, { color: '#D1D5DB' }]}>Genre Name</Text>
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, { 
+                    backgroundColor: 'rgba(31, 41, 55, 0.4)',
+                    color: '#FFFFFF',
+                    borderColor: 'rgba(55, 65, 81, 0.3)' 
+                  }]}
                   value={newGenre}
                   onChangeText={setNewGenre}
                   placeholder="Enter genre name"
-                  placeholderTextColor="#6B7280"
+                  placeholderTextColor="#9CA3AF"
                   autoFocus
                 />
               </View>
@@ -713,46 +678,40 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: designSystem.spacing[5],
-    paddingTop: designSystem.spacing[8],
-    paddingBottom: designSystem.spacing[6],
+    paddingTop: designSystem.spacing[4],
+    paddingBottom: designSystem.spacing[5],
+    borderBottomWidth: 1,
   },
-  headerContent: {
+  headerTop: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: designSystem.spacing[4],
+    justifyContent: 'space-between',
+    marginBottom: designSystem.spacing[2],
   },
-  avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-    ...designSystem.shadows.lg,
-  },
-  initials: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  userInfo: {
+  headerLeft: {
     flex: 1,
-    minWidth: 0,
   },
-  userName: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#FFFFFF',
+  headerGreeting: {
+    fontSize: 13,
+    fontWeight: '500',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
     marginBottom: 4,
   },
-  userSubtitle: {
-    fontSize: 14,
-    color: '#9CA3AF',
+  userName: {
+    fontSize: 28,
+    fontWeight: '700',
   },
-  settingsButton: {
+  userEmail: {
+    fontSize: 14,
+  },
+  editButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(31, 41, 55, 0.5)',
+    backgroundColor: 'rgba(147, 51, 234, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(147, 51, 234, 0.3)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -761,12 +720,21 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: designSystem.spacing[5],
-    paddingTop: designSystem.spacing[6],
+    paddingTop: designSystem.spacing[5],
+  },
+  statsSection: {
+    marginBottom: designSystem.spacing[6],
+  },
+  statsTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: designSystem.spacing[3],
   },
   statsContainer: {
     flexDirection: 'row',
     gap: designSystem.spacing[3],
-    marginBottom: designSystem.spacing[6],
   },
   section: {
     marginBottom: designSystem.spacing[6],
@@ -775,29 +743,40 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: designSystem.spacing[2],
-    marginBottom: designSystem.spacing[3],
+    marginBottom: designSystem.spacing[4],
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '600',
-    color: '#FFFFFF',
     flex: 1,
   },
   sectionCount: {
     fontSize: 14,
-    color: '#9CA3AF',
   },
   preferenceCard: {
-    backgroundColor: 'rgba(31, 41, 55, 0.5)',
-    borderRadius: designSystem.borderRadius['2xl'],
+    backgroundColor: 'rgba(31, 41, 55, 0.4)',
+    borderRadius: designSystem.borderRadius.xl,
     padding: designSystem.spacing[4],
+    marginBottom: designSystem.spacing[3],
+    borderWidth: 1,
+    borderColor: 'rgba(55, 65, 81, 0.3)',
+  },
+  preferenceCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: designSystem.spacing[3],
   },
   preferenceCardTitle: {
     fontSize: 14,
-    fontWeight: '500',
-    color: '#D1D5DB',
-    marginBottom: designSystem.spacing[3],
+    fontWeight: '600',
+    color: '#E5E7EB',
+    marginBottom: 0,
+  },
+  emptyChipText: {
+    fontSize: 13,
+    color: '#6B7280',
+    fontStyle: 'italic',
   },
   chipContainer: {
     flexDirection: 'row',
@@ -805,8 +784,10 @@ const styles = StyleSheet.create({
     gap: designSystem.spacing[2],
   },
   favoritesCard: {
-    backgroundColor: 'rgba(31, 41, 55, 0.5)',
-    borderRadius: designSystem.borderRadius['2xl'],
+    backgroundColor: 'rgba(31, 41, 55, 0.4)',
+    borderRadius: designSystem.borderRadius.xl,
+    borderWidth: 1,
+    borderColor: 'rgba(55, 65, 81, 0.3)',
     overflow: 'hidden',
   },
   favoriteItem: {
@@ -839,8 +820,10 @@ const styles = StyleSheet.create({
     color: '#9CA3AF',
   },
   emptyFavorites: {
-    backgroundColor: 'rgba(31, 41, 55, 0.5)',
-    borderRadius: designSystem.borderRadius['2xl'],
+    backgroundColor: 'rgba(31, 41, 55, 0.4)',
+    borderRadius: designSystem.borderRadius.xl,
+    borderWidth: 1,
+    borderColor: 'rgba(55, 65, 81, 0.3)',
     padding: designSystem.spacing[8],
     alignItems: 'center',
   },
@@ -868,16 +851,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: designSystem.spacing[5],
     paddingVertical: designSystem.spacing[4],
     borderBottomWidth: 1,
-    borderBottomColor: '#1F2937',
   },
   modalTitle: {
     fontSize: 17,
     fontWeight: '600',
-    color: '#FFFFFF',
   },
   modalCancel: {
     fontSize: 17,
-    color: '#9CA3AF',
   },
   modalSave: {
     fontSize: 17,
@@ -893,18 +873,14 @@ const styles = StyleSheet.create({
   inputLabel: {
     fontSize: 14,
     fontWeight: '500',
-    color: '#D1D5DB',
     marginBottom: designSystem.spacing[2],
   },
   input: {
-    backgroundColor: 'rgba(31, 41, 55, 0.5)',
     borderRadius: designSystem.borderRadius.xl,
     paddingHorizontal: designSystem.spacing[4],
     paddingVertical: designSystem.spacing[3],
     fontSize: 16,
-    color: '#FFFFFF',
     borderWidth: 1,
-    borderColor: 'rgba(75, 85, 99, 0.5)',
   },
 });
 

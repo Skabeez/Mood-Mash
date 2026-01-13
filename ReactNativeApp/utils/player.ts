@@ -125,7 +125,13 @@ export function getThumbnailUrl(
   videoId: string,
   quality: 'default' | 'medium' | 'high' | 'maxres' = 'high'
 ): string {
-  return `https://img.youtube.com/vi/${videoId}/${quality}default.jpg`;
+  const qualityMap = {
+    'default': 'default.jpg',
+    'medium': 'mqdefault.jpg',
+    'high': 'hqdefault.jpg',
+    'maxres': 'maxresdefault.jpg',
+  };
+  return `https://img.youtube.com/vi/${videoId}/${qualityMap[quality]}`;
 }
 
 /**

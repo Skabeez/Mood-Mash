@@ -331,9 +331,10 @@ export async function saveFavoriteSong(
       .from('favorites')
       .insert({
         user_id: userId,
-        song_id: songId,
-        ...songData,
-        created_at: new Date().toISOString(),
+        youtube_id: songData.youtubeId,
+        title: songData.title,
+        artist: songData.artist,
+        album_art: songData.albumArt,
       });
 
     if (error) {
@@ -354,7 +355,7 @@ export async function saveFavoriteSong(
  */
 export async function removeFavoriteSong(
   userId: string,
-  songId: string
+  youtubeId: string
 ): Promise<{ error: Error | null }> {
   if (!supabase) {
     return { error: new Error('Supabase not configured') };
@@ -365,7 +366,7 @@ export async function removeFavoriteSong(
       .from('favorites')
       .delete()
       .eq('user_id', userId)
-      .eq('song_id', songId);
+      .eq('youtube_id', youtubeId);
 
     if (error) {
       throw error;
@@ -393,13 +394,22 @@ export async function getUserFavorites(userId: string): Promise<any[]> {
       .from('favorites')
       .select('*')
       .eq('user_id', userId)
-      .order('created_at', { ascending: false });
+      .order('added_at', { ascending: false });
 
     if (error) {
       throw error;
     }
 
-    return data || [];
+    // Transform to match Recommendation format
+    return (data || []).map((fav: any) => ({
+      id: fav.youtube_id,
+      title: fav.title,
+      artist: fav.artist,
+      albumArt: fav.album_art,
+      youtubeId: fav.youtube_id,
+      type: 'mainstream' as const,
+      duration: '4:00',
+    }));
   } catch (error) {
     console.error('Get favorites error:', error);
     return [];

@@ -18,19 +18,20 @@ const REQUEST_TIMEOUT = 30000; // 30 seconds
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 1000; // 1 second
 
-const SYSTEM_PROMPT = `You are a friendly AI music recommendation assistant. Help users discover music based on their mood, activity, and preferences. Be conversational and enthusiastic about music.
+const SYSTEM_PROMPT = `You are a friendly music recommendation assistant. Keep responses SHORT and focused on the individual songs recommended.
 
-When recommending songs:
-1. Consider the user's mood, activity, and music taste
-2. Provide diverse recommendations (mix of popular and deep cuts)
-3. Explain why each song fits their request
-4. Be conversational and engaging
+IMPORTANT RULES:
+- Recommend ONLY individual songs, NEVER playlists or compilations
+- Keep your response to 2-3 sentences maximum
+- Don't list out all the songs - the user can see them in the UI
+- Just briefly explain why these tracks fit their mood/request
+- Be warm but concise
 
-You can understand requests like:
-- "I'm feeling sad, recommend some music"
-- "What should I listen to while working out?"
-- "Songs like [artist/song]"
-- "Chill music for studying"`;
+Example good response:
+"Perfect! I found some amazing chill tracks for studying. These songs have smooth beats and calming vibes that'll help you focus 📚✨"
+
+Example BAD response (too long, mentions playlists):
+"OH MY GOSH, I found these amazing playlists! First is the Ultimate Study Mix 2025, then we have..."`;
 
 export class GroqClient {
   private apiKey: string;

@@ -86,6 +86,7 @@ export const FullPlayer: React.FC<FullPlayerProps> = ({ visible, onClose }) => {
   const playerRef = useRef<YouTubePlayerRef>(null);
   const [showQueue, setShowQueue] = useState(false);
   const [isSeeking, setIsSeeking] = useState(false);
+  const [isFavorite, setIsFavorite] = useState(false);
   const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
 
   // Animation for modal
@@ -117,11 +118,11 @@ export const FullPlayer: React.FC<FullPlayerProps> = ({ visible, onClose }) => {
     }
   }, [isPlaying, visible]);
 
-  // Load new video
+  // Load new video when song changes (not when modal opens/closes)
   useEffect(() => {
-    if (!playerRef.current || !currentSong || !visible) return;
+    if (!playerRef.current || !currentSong) return;
     playerRef.current.loadVideo(currentSong.youtubeId || '');
-  }, [currentSong?.youtubeId, visible]);
+  }, [currentSong?.youtubeId]);
 
   // Poll current time
   useEffect(() => {
@@ -172,6 +173,16 @@ export const FullPlayer: React.FC<FullPlayerProps> = ({ visible, onClose }) => {
     try {
       const dur = await playerRef.current.getDuration();
       updateDuration(dur);
+      
+      // Set initial volume
+      playerRef.current.setVolume(volume * 100);
+      
+      // Auto-play if isPlaying is true
+      if (isPlaying) {
+        setTimeout(() => {
+          playerRef.current?.play();
+        }, 100);
+      }
     } catch (error) {
       console.error('Error getting duration:', error);
     }
@@ -199,6 +210,35 @@ export const FullPlayer: React.FC<FullPlayerProps> = ({ visible, onClose }) => {
     setShowQueue(false);
   };
 
+  const handleFavorite = () => {
+    setIsFavorite(!isFavorite);
+    // TODO: Save to database via Supabase
+    console.log('Toggle favorite for:', currentSong?.title);
+  };
+
+  const handleShare = async () => {
+    if (!currentSong) return;
+    
+    const shareText = `Check out "${currentSong.title}" by ${currentSong.artist}`;
+    const shareUrl = `https://www.youtube.com/watch?v=${currentSong.youtubeId}`;
+    
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: currentSong.title,
+          text: shareText,
+          url: shareUrl,
+        });
+      } else {
+        // Fallback: copy to clipboard
+        await navigator.clipboard.writeText(`${shareText}\n${shareUrl}`);
+        alert('Link copied to clipboard!');
+      }
+    } catch (error) {
+      console.error('Error sharing:', error);
+    }
+  };
+
   const getRepeatIcon = () => {
     switch (repeatMode) {
       case 'one':
@@ -215,31 +255,33 @@ export const FullPlayer: React.FC<FullPlayerProps> = ({ visible, onClose }) => {
   };
 
   return (
-    <Modal
-      visible={visible}
-      animationType="none"
-      transparent={false}
-      onRequestClose={onClose}
-    >
-      <Animated.View
-        style={[
-          styles.container,
-          {
-            transform: [{ translateY: slideAnim }],
-          },
-        ]}
+    <>
+      {/* Hidden YouTube Player - Always mounted */}
+      <View style={{ position: 'absolute', width: 0, height: 0, opacity: 0 }}>
+        <YouTubePlayer
+          ref={playerRef}
+          videoId={currentSong?.youtubeId || ''}
+          onReady={handlePlayerReady}
+          onStateChange={handleStateChange}
+          onError={(error: string) => console.error('Player error:', error)}
+          autoplay={isPlaying}
+        />
+      </View>
+
+      <Modal
+        visible={visible}
+        animationType="none"
+        transparent={false}
+        onRequestClose={onClose}
       >
-        {/* Hidden YouTube Player */}
-        <View style={styles.hiddenPlayer}>
-          <YouTubePlayer
-            ref={playerRef}
-            videoId={currentSong.youtubeId || ''}
-            onReady={handlePlayerReady}
-            onStateChange={handleStateChange}
-            onError={(error: string) => console.error('Player error:', error)}
-            autoplay={isPlaying}
-          />
-        </View>
+        <Animated.View
+          style={[
+            styles.container,
+            {
+              transform: [{ translateY: slideAnim }],
+            },
+          ]}
+        >
 
         {/* Header */}
         <View style={styles.header}>
@@ -350,11 +392,15 @@ export const FullPlayer: React.FC<FullPlayerProps> = ({ visible, onClose }) => {
 
           {/* Actions */}
           <View style={styles.actions}>
-            <TouchableOpacity style={styles.actionButton}>
-              <Ionicons name="heart-outline" size={24} color={COLORS.textSecondary} />
+            <TouchableOpacity style={styles.actionButton} onPress={handleFavorite}>
+              <Ionicons 
+                name={isFavorite ? "heart" : "heart-outline"} 
+                size={24} 
+                color={isFavorite ? COLORS.primary : COLORS.textSecondary} 
+              />
               <Text style={styles.actionText}>Favorite</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.actionButton}>
+            <TouchableOpacity style={styles.actionButton} onPress={handleShare}>
               <Ionicons name="share-outline" size={24} color={COLORS.textSecondary} />
               <Text style={styles.actionText}>Share</Text>
             </TouchableOpacity>
@@ -362,7 +408,11 @@ export const FullPlayer: React.FC<FullPlayerProps> = ({ visible, onClose }) => {
               style={styles.actionButton}
               onPress={() => setShowQueue(!showQueue)}
             >
-              <Ionicons name="list" size={24} color={COLORS.textSecondary} />
+              <Ionicons 
+                name={showQueue ? "list" : "list-outline"} 
+                size={24} 
+                color={showQueue ? COLORS.primary : COLORS.textSecondary} 
+              />
               <Text style={styles.actionText}>Queue ({playlist.length})</Text>
             </TouchableOpacity>
           </View>
@@ -409,6 +459,7 @@ export const FullPlayer: React.FC<FullPlayerProps> = ({ visible, onClose }) => {
         </ScrollView>
       </Animated.View>
     </Modal>
+    </>
   );
 };
 

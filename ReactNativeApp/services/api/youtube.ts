@@ -61,16 +61,39 @@ export class YouTubeClient {
       const url = `${this.baseURL}/search?${new URLSearchParams(params)}`;
       const response = await this.makeRequest<YouTubeSearchResponse>(url);
 
-      const videos: YouTubeVideo[] = response.items.map((item) => ({
-        id: item.id.videoId,
-        title: item.snippet.title,
-        thumbnail: item.snippet.thumbnails.high.url,
-        channelTitle: item.snippet.channelTitle,
-        publishedAt: item.snippet.publishedAt,
-      }));
+      // Filter out playlists, compilations, shorts, and social media content
+      const excludeKeywords = [
+        'playlist', 'compilation', 'mix', 'best of', 'top 10', 'top 20', 'collection',
+        'shorts', 'short', 'reel', 'tiktok', 'roadtrip', 'vlog'
+      ];
+      
+      const videos: YouTubeVideo[] = response.items
+        .filter((item) => {
+          const title = item.snippet.title.toLowerCase();
+          
+          // Exclude videos with too many hashtags (social media content)
+          const hashtagCount = (title.match(/#/g) || []).length;
+          if (hashtagCount > 2) return false;
+          
+          // Exclude videos with excluded keywords
+          if (excludeKeywords.some(keyword => title.includes(keyword))) return false;
+          
+          // Exclude if channel is not a music channel (contains common non-music indicators)
+          const channel = item.snippet.channelTitle.toLowerCase();
+          if (channel.includes('vlog') || channel.includes('daily')) return false;
+          
+          return true;
+        })
+        .map((item) => ({
+          id: item.id.videoId,
+          title: item.snippet.title,
+          thumbnail: item.snippet.thumbnails.high.url,
+          channelTitle: item.snippet.channelTitle,
+          publishedAt: item.snippet.publishedAt,
+        }));
 
       if (env.isDevelopment) {
-        console.log(`✅ Found ${videos.length} videos`);
+        console.log(`✅ Found ${videos.length} videos (after filtering playlists)`);
       }
 
       return videos;

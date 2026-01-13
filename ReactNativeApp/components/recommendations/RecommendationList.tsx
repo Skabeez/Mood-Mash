@@ -104,6 +104,7 @@ export const RecommendationList: React.FC<RecommendationListProps> = React.memo(
 
     const containerStyle: ViewStyle = {
       marginBottom: designSystem.spacing[6],
+      zIndex: 10,
     };
 
     const emptyContainerStyle: ViewStyle = {
@@ -124,8 +125,9 @@ export const RecommendationList: React.FC<RecommendationListProps> = React.memo(
     const renderItem = ({ item }: { item: Recommendation }) => (
       <View
         style={{
-          marginRight: config.horizontal ? designSystem.spacing[3] : 0,
-          marginBottom: config.horizontal ? 0 : designSystem.spacing[3],
+          marginRight: config.horizontal ? designSystem.spacing[5] : 0,
+          marginBottom: config.horizontal ? 0 : designSystem.spacing[5],
+          flexShrink: config.horizontal ? 0 : 1,  // Prevent shrinking on horizontal layout
         }}
       >
         <RecommendationCard
@@ -214,11 +216,12 @@ export const RecommendationList: React.FC<RecommendationListProps> = React.memo(
             showsVerticalScrollIndicator={false}
             contentContainerStyle={{
               paddingHorizontal: config.horizontal ? designSystem.spacing[4] : 0,
+              paddingRight: config.horizontal ? designSystem.spacing[5] : 0,
             }}
             ItemSeparatorComponent={
               config.horizontal
                 ? undefined
-                : () => <View style={{ height: designSystem.spacing[3] }} />
+                : () => <View style={{ height: designSystem.spacing[4] }} />
             }
             scrollEnabled={config.horizontal}
             nestedScrollEnabled={config.horizontal}

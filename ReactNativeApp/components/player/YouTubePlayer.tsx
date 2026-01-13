@@ -52,9 +52,18 @@ const YouTubePlayerWeb = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(
         return;
       }
 
+      // Check if script is already loading
+      const existingScript = document.querySelector('script[src*="youtube.com/iframe_api"]');
+      if (existingScript) {
+        // @ts-ignore
+        window.onYouTubeIframeAPIReady = initPlayer;
+        return;
+      }
+
       // Load the API
       const tag = document.createElement('script');
       tag.src = 'https://www.youtube.com/iframe_api';
+      tag.async = true;
       const firstScriptTag = document.getElementsByTagName('script')[0];
       firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
 
@@ -63,31 +72,58 @@ const YouTubePlayerWeb = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(
 
       return () => {
         if (player) {
-          player.destroy();
+          try {
+            player.destroy();
+          } catch (error) {
+            console.error('Error destroying player:', error);
+          }
         }
       };
     }, []);
 
     useEffect(() => {
-      if (player && videoId) {
-        player.loadVideoById(videoId);
+      if (player && videoId && typeof player.loadVideoById === 'function') {
+        try {
+          player.loadVideoById(videoId);
+        } catch (error) {
+          console.error('Error loading video:', error);
+        }
       }
     }, [videoId, player]);
 
     const initPlayer = () => {
       // @ts-ignore
       const ytPlayer = new window.YT.Player(playerIdRef.current, {
+        height: '100%',
+        width: '100%',
         videoId,
         playerVars: {
           autoplay: autoplay ? 1 : 0,
-          controls: 1,
+          controls: 0,
           modestbranding: 1,
           rel: 0,
+          fs: 0,
+          playsinline: 1,
+          enablejsapi: 1,
+          origin: window.location.origin,
+          widget_referrer: window.location.origin,
+          hd: 1,
+          vq: 'hd720',
+          suggestedQuality: 'hd720',
         },
         events: {
           onReady: (event: any) => {
             setPlayer(event.target);
             setLoading(false);
+            // Set quality to highest available
+            try {
+              event.target.setPlaybackQuality('hd720');
+            } catch (error) {
+              console.error('Error setting quality:', error);
+            }
+            if (autoplay) {
+              event.target.playVideo();
+            }
             onReady?.();
           },
           onStateChange: (event: any) => {
@@ -102,21 +138,53 @@ const YouTubePlayerWeb = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(
             onStateChange?.(states[event.data] || 'unstarted');
           },
           onError: (event: any) => {
+            console.error('YouTube player error:', event.data);
             onError?.(event.data.toString());
           },
         },
       });
+      setPlayer(ytPlayer);
     };
 
     useImperativeHandle(ref, () => ({
-      play: () => player?.playVideo(),
-      pause: () => player?.pauseVideo(),
-      seekTo: (seconds: number) => player?.seekTo(seconds, true),
-      setVolume: (volume: number) => player?.setVolume(volume),
-      getCurrentTime: async () => player?.getCurrentTime() || 0,
-      getDuration: async () => player?.getDuration() || 0,
-      loadVideo: (newVideoId: string) => player?.loadVideoById(newVideoId),
-    }));
+      play: () => {
+        if (player && typeof player.playVideo === 'function') {
+          player.playVideo();
+        }
+      },
+      pause: () => {
+        if (player && typeof player.pauseVideo === 'function') {
+          player.pauseVideo();
+        }
+      },
+      seekTo: (seconds: number) => {
+        if (player && typeof player.seekTo === 'function') {
+          player.seekTo(seconds, true);
+        }
+      },
+      setVolume: (volume: number) => {
+        if (player && typeof player.setVolume === 'function') {
+          player.setVolume(volume);
+        }
+      },
+      getCurrentTime: async () => {
+        if (player && typeof player.getCurrentTime === 'function') {
+          return player.getCurrentTime();
+        }
+        return 0;
+      },
+      getDuration: async () => {
+        if (player && typeof player.getDuration === 'function') {
+          return player.getDuration();
+        }
+        return 0;
+      },
+      loadVideo: (newVideoId: string) => {
+        if (player && typeof player.loadVideoById === 'function') {
+          player.loadVideoById(newVideoId);
+        }
+      },
+    }), [player]);
 
     return (
       <View style={[styles.container, style]}>

@@ -184,10 +184,6 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({ onExpand, onClose }) => 
 
 const styles = StyleSheet.create({
   container: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
     height: MINI_PLAYER_HEIGHT,
     backgroundColor: SURFACE,
     borderTopWidth: 1,
@@ -197,6 +193,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 8,
+    zIndex: 100,
   },
 
   progressBarContainer: {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { supabase, getCurrentUser } from '@/services/api/supabase';
 import { designSystem } from '@/constants/designSystem';
 import { Recommendation } from '@/types';
 
@@ -22,81 +23,67 @@ export interface HistoryEntry {
   date: Date;
 }
 
-const mockHistory: HistoryEntry[] = [
-  {
-    id: '1',
-    song: {
-      id: 'h1',
-      title: 'Weightless',
-      artist: 'Marconi Union',
-      albumArt: 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?w=400&h=400&fit=crop',
-      youtubeId: 'UfcAVejslrU',
-      type: 'highlight',
-      duration: '8:00',
-    },
-    date: new Date('2026-01-13T10:01:00'),
-  },
-  {
-    id: '2',
-    song: {
-      id: 'h2',
-      title: 'Midnight City',
-      artist: 'M83',
-      albumArt: 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=400&h=400&fit=crop',
-      youtubeId: 'dX3k_QDnzHE',
-      type: 'mainstream',
-      duration: '4:00',
-    },
-    date: new Date('2026-01-12T15:30:00'),
-  },
-  {
-    id: '3',
-    song: {
-      id: 'h3',
-      title: 'Electric Feel',
-      artist: 'MGMT',
-      albumArt: 'https://images.unsplash.com/photo-1511379938547-c1f69419868d?w=400&h=400&fit=crop',
-      youtubeId: 'MmZexg8sxyk',
-      type: 'deep-cut',
-      duration: '5:00',
-    },
-    date: new Date('2026-01-11T20:15:00'),
-  },
-  {
-    id: '4',
-    song: {
-      id: 'h4',
-      title: 'Intro',
-      artist: 'The xx',
-      albumArt: 'https://images.unsplash.com/photo-1470019693664-1d202d2c0907?w=400&h=400&fit=crop',
-      youtubeId: 'example4',
-      type: 'deep-cut',
-      duration: '4:00',
-    },
-    date: new Date('2026-01-10T12:00:00'),
-  },
-  {
-    id: '5',
-    song: {
-      id: 'h5',
-      title: 'Holocene',
-      artist: 'Bon Iver',
-      albumArt: 'https://images.unsplash.com/photo-1487180144351-b8472da7d491?w=400&h=400&fit=crop',
-      youtubeId: 'TWcyIpul8OE',
-      type: 'mainstream',
-      duration: '4:00',
-    },
-    date: new Date('2026-01-09T18:45:00'),
-  },
-];
-
 const HistoryScreen: React.FC = () => {
-  const [favorites, setFavorites] = useState<Set<string>>(new Set(['h1', 'h3']));
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
 
-  const filteredHistory = mockHistory.filter((entry) =>
+  // Fetch user's favorites from Supabase
+  const fetchHistory = async () => {
+    try {
+      const user = await getCurrentUser();
+      if (!user) {
+        setHistory([]);
+        setIsLoading(false);
+        return;
+      }
+
+      // Fetch user's favorites
+      const { data: favoriteData, error: favError } = await supabase
+        .from('favorites')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('added_at', { ascending: false });
+
+      if (favError) throw favError;
+
+      // Convert to HistoryEntry format
+      const historyEntries: HistoryEntry[] = (favoriteData || []).map((fav: any) => ({
+        id: fav.id,
+        song: {
+          id: fav.youtube_id,
+          title: fav.title,
+          artist: fav.artist,
+          albumArt: fav.album_art || 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=400&h=400&fit=crop',
+          youtubeId: fav.youtube_id,
+          type: 'mainstream' as any,
+          duration: '4:00',
+        },
+        date: new Date(fav.added_at),
+      }));
+
+      setHistory(historyEntries);
+
+      // Mark all fetched items as favorites
+      const favSet = new Set(favoriteData?.map((f: any) => f.youtube_id) || []);
+      setFavorites(favSet);
+    } catch (error) {
+      console.error('Error fetching history:', error);
+      setHistory([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Load history on mount
+  useEffect(() => {
+    fetchHistory();
+  }, []);
+
+  const filteredHistory = history.filter((entry) =>
     searchQuery === ''
       ? true
       : entry.song.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -119,16 +106,56 @@ const HistoryScreen: React.FC = () => {
     });
   };
 
-  const handleToggleFavorite = (songId: string) => {
-    setFavorites((prev) => {
-      const newFavorites = new Set(prev);
-      if (newFavorites.has(songId)) {
-        newFavorites.delete(songId);
+  const handleToggleFavorite = async (songId: string) => {
+    try {
+      const user = await getCurrentUser();
+      if (!user) return;
+
+      const isFavorited = favorites.has(songId);
+
+      if (isFavorited) {
+        // Remove from favorites
+        const { error } = await supabase
+          .from('favorites')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('youtube_id', songId);
+
+        if (error) throw error;
+
+        // Update local state
+        setFavorites((prev) => {
+          const newFavorites = new Set(prev);
+          newFavorites.delete(songId);
+          return newFavorites;
+        });
+
+        // Remove from history list since this page shows favorites
+        setHistory((prev) => prev.filter(h => h.song.youtubeId !== songId));
       } else {
-        newFavorites.add(songId);
+        // Find the song in history to get its details
+        const song = history.find(h => h.song.youtubeId === songId)?.song;
+        if (!song) return;
+
+        // Add to favorites
+        const { error } = await supabase
+          .from('favorites')
+          .insert({ 
+            user_id: user.id, 
+            youtube_id: song.youtubeId,
+            title: song.title,
+            artist: song.artist,
+            album_art: song.albumArt,
+          });
+
+        if (error) throw error;
+
+        // Update local state
+        setFavorites((prev) => new Set([...prev, songId]));
       }
-      return newFavorites;
-    });
+    } catch (error) {
+      console.error('Error toggling favorite:', error);
+    }
   };
 
   const handlePlay = (song: Recommendation) => {
@@ -136,12 +163,10 @@ const HistoryScreen: React.FC = () => {
     // TODO: Integrate with music player
   };
 
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
     setIsRefreshing(true);
-    // Simulate API call
-    setTimeout(() => {
-      setIsRefreshing(false);
-    }, 1000);
+    await fetchHistory();
+    setIsRefreshing(false);
   };
 
   const handleNavigateToChat = () => {
@@ -200,12 +225,12 @@ const HistoryScreen: React.FC = () => {
           </Pressable>
           <Pressable
             style={styles.favoriteButton}
-            onPress={() => handleToggleFavorite(item.song.id)}
+            onPress={() => handleToggleFavorite(item.song.youtubeId)}
           >
             <Ionicons
-              name={favorites.has(item.song.id) ? 'heart' : 'heart-outline'}
+              name={favorites.has(item.song.youtubeId) ? 'heart' : 'heart-outline'}
               size={16}
-              color={favorites.has(item.song.id) ? '#EC4899' : '#9CA3AF'}
+              color={favorites.has(item.song.youtubeId) ? '#EC4899' : '#9CA3AF'}
             />
           </Pressable>
         </View>
@@ -216,14 +241,14 @@ const HistoryScreen: React.FC = () => {
   return (
     <View style={styles.container}>
       <LinearGradient
-        colors={['#030712', '#111827']} // gray-950 to gray-900
+        colors={['#030712', '#111827']}
         style={StyleSheet.absoluteFill}
       />
 
       <SafeAreaView style={styles.safeArea}>
         {/* Header */}
         <LinearGradient
-          colors={['#030712', 'rgba(3, 7, 18, 0.95)']} // gray-950 to gray-950/95
+          colors={['#030712', 'rgba(3, 7, 18, 0.95)']}
           style={styles.header}
         >
           <View style={styles.headerTop}>
@@ -357,7 +382,6 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: 'rgba(31, 41, 55, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: designSystem.spacing[6],
@@ -365,13 +389,11 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 24,
     fontWeight: '700',
-    color: '#FFFFFF',
     marginBottom: designSystem.spacing[2],
     textAlign: 'center',
   },
   emptySubtitle: {
     fontSize: 16,
-    color: '#9CA3AF',
     textAlign: 'center',
     marginBottom: designSystem.spacing[8],
     lineHeight: 24,
@@ -391,7 +413,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   historyItem: {
-    backgroundColor: 'rgba(31, 41, 55, 0.5)', // gray-800/50
     borderRadius: designSystem.borderRadius['2xl'],
     marginBottom: designSystem.spacing[3],
     overflow: 'hidden',
@@ -419,12 +440,10 @@ const styles = StyleSheet.create({
   songTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#FFFFFF',
     marginBottom: 4,
   },
   artistName: {
     fontSize: 14,
-    color: '#9CA3AF', // gray-400
     marginBottom: 8,
   },
   dateContainer: {
@@ -434,7 +453,6 @@ const styles = StyleSheet.create({
   },
   dateText: {
     fontSize: 12,
-    color: '#6B7280', // gray-500
   },
   actions: {
     flexDirection: 'column',

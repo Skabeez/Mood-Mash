@@ -22,6 +22,7 @@ import { Recommendation } from '@/types';
 import { useChatContext } from '@/context/ChatContext';
 import { usePlayerContext } from '@/context/PlayerContext';
 import { designSystem } from '@/constants/designSystem';
+import { getCurrentUser, saveFavoriteSong, removeFavoriteSong, getUserFavorites } from '@/services/api/supabase';
 
 
 // Loading messages that rotate
@@ -38,10 +39,32 @@ const ChatScreen: React.FC = () => {
   const { playSong, currentSong } = usePlayerContext();
   const [inputValue, setInputValue] = useState('');
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
+  const [userId, setUserId] = useState<string | null>(null);
   const [showFullPlayer, setShowFullPlayer] = useState(false);
   const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
   const [loadingDuration, setLoadingDuration] = useState(0);
   const flatListRef = useRef<FlatList>(null);
+
+  // Load user and favorites on mount
+  useEffect(() => {
+    const loadUserData = async () => {
+      try {
+        const user = await getCurrentUser();
+        if (user) {
+          setUserId(user.id);
+          
+          // Load user's favorites
+          const userFavorites = await getUserFavorites(user.id);
+          const favIds = new Set(userFavorites.map((f: any) => f.youtubeId));
+          setFavorites(favIds);
+        }
+      } catch (error) {
+        console.error('Error loading user data:', error);
+      }
+    };
+
+    loadUserData();
+  }, []);
 
   const scrollToBottom = () => {
     setTimeout(() => {
@@ -68,16 +91,40 @@ const ChatScreen: React.FC = () => {
     }
   }, [state.isLoading]);
 
-  const handleToggleFavorite = (songId: string) => {
-    setFavorites((prev) => {
-      const newFavorites = new Set(prev);
-      if (newFavorites.has(songId)) {
-        newFavorites.delete(songId);
+  const handleToggleFavorite = async (recommendation: Recommendation) => {
+    if (!userId) {
+      console.warn('No user logged in');
+      return;
+    }
+
+    try {
+      const isFavorited = favorites.has(recommendation.youtubeId);
+
+      if (isFavorited) {
+        // Remove from favorites
+        const { error } = await removeFavoriteSong(userId, recommendation.youtubeId);
+        if (error) throw error;
+
+        setFavorites((prev) => {
+          const newFavorites = new Set(prev);
+          newFavorites.delete(recommendation.youtubeId);
+          return newFavorites;
+        });
       } else {
-        newFavorites.add(songId);
+        // Add to favorites
+        const { error } = await saveFavoriteSong(userId, recommendation.id, {
+          title: recommendation.title,
+          artist: recommendation.artist,
+          albumArt: recommendation.albumArt,
+          youtubeId: recommendation.youtubeId,
+        });
+        if (error) throw error;
+
+        setFavorites((prev) => new Set([...prev, recommendation.youtubeId]));
       }
-      return newFavorites;
-    });
+    } catch (error) {
+      console.error('Error toggling favorite:', error);
+    }
   };
 
   const handlePlaySong = (recommendation: Recommendation) => {
@@ -90,8 +137,8 @@ const ChatScreen: React.FC = () => {
   };
 
   const handleCardPress = (recommendation: Recommendation) => {
-    // TODO: Navigate to song details
-    console.log('Card pressed:', recommendation.title);
+    // Play song when card is pressed
+    handlePlaySong(recommendation);
   };
 
   const handleSend = async () => {
@@ -276,11 +323,11 @@ const ChatScreen: React.FC = () => {
           </View>
         </KeyboardAvoidingView>
 
-        {/* Mini Player */}
-        <MiniPlayer
+        {/* Mini Player - Now in normal flow */}
+        {<MiniPlayer
           onExpand={() => setShowFullPlayer(true)}
           onClose={() => {}}
-        />
+        />}
 
         {/* Full Player Modal */}
         <FullPlayer
@@ -333,7 +380,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 4,
   },
   aiBubble: {
-    backgroundColor: '#1F2937', // gray-800
+    backgroundColor: 'rgba(31, 41, 55, 0.4)',
     borderTopLeftRadius: 4,
   },
   errorBubble: {
@@ -344,7 +391,7 @@ const styles = StyleSheet.create({
   messageText: {
     fontSize: 15,
     lineHeight: 22,
-    color: '#F9FAFB', // gray-100
+    color: '#FFFFFF',
   },
   errorText: {
     color: '#FCA5A5', // red-300
@@ -363,7 +410,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   loadingBubble: {
-    backgroundColor: '#1F2937',
+    backgroundColor: 'rgba(31, 41, 55, 0.4)',
     borderRadius: 20,
     borderTopLeftRadius: 4,
     paddingHorizontal: 20,
@@ -373,13 +420,13 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: 15,
     lineHeight: 22,
-    color: '#9CA3AF', // gray-400
+    color: '#FFFFFF',
     marginLeft: designSystem.spacing[2],
   },
   loadingSubtext: {
     fontSize: 13,
     lineHeight: 18,
-    color: '#6B7280', // gray-500
+    color: 'rgba(255, 255, 255, 0.7)',
     marginTop: designSystem.spacing[2],
     fontStyle: 'italic',
   },

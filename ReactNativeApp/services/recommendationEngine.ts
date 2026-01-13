@@ -186,29 +186,47 @@ export class RecommendationEngine {
     const searchPromises: Promise<YouTubeVideo[]>[] = [];
 
     for (const artist of artists) {
-      // Build search query based on intent
-      let query = artist;
-      if (intent.mood) query += ` ${intent.mood}`;
-      if (intent.genre) query += ` ${intent.genre}`;
-      query += ' music';
+      // First, get actual top tracks from Last.fm for accuracy
+      try {
+        const topTracks = await this.getCachedLastFmData(
+          `tracks_${artist}`,
+          () => lastfmClient.getTopTracks(artist, 5)
+        );
 
-      // Check cache first
-      const cached = this.getCachedYouTubeData(query);
-      if (cached) {
-        allTracks.push(...cached);
-        continue;
+        // Search YouTube for each specific track
+        for (const track of topTracks) {
+          const query = `${artist} ${track.name} official audio`;
+          
+          const cached = this.getCachedYouTubeData(query);
+          if (cached && cached.length > 0) {
+            allTracks.push(cached[0]); // Take first result
+            continue;
+          }
+
+          searchPromises.push(
+            youtubeClient.searchMusic(query, 1).then((videos) => {
+              if (videos.length > 0) {
+                this.cacheYouTubeData(query, videos);
+                return videos;
+              }
+              return [];
+            }).catch((error) => {
+              console.error(`Error searching for ${query}:`, error);
+              return [];
+            })
+          );
+        }
+      } catch (error) {
+        console.error(`Error getting top tracks for ${artist}:`, error);
+        // Fallback to generic artist search
+        const query = `${artist} official audio -shorts -reel -tiktok`;
+        searchPromises.push(
+          youtubeClient.searchMusic(query, 3).then((videos) => {
+            this.cacheYouTubeData(query, videos);
+            return videos;
+          }).catch(() => [])
+        );
       }
-
-      // Search YouTube
-      searchPromises.push(
-        youtubeClient.searchMusic(query, 5).then((videos) => {
-          this.cacheYouTubeData(query, videos);
-          return videos;
-        }).catch((error) => {
-          console.error(`Error searching for ${query}:`, error);
-          return [];
-        })
-      );
     }
 
     // Wait for all searches to complete
@@ -300,12 +318,12 @@ export class RecommendationEngine {
 
       const contextMessage = `User said: "${userMessage}"
 
-I've found these tracks for them:
+I've found these individual songs for them:
 ${trackList}
 
-Intent detected: ${JSON.stringify(intent)}
+Intent: ${JSON.stringify(intent)}
 
-Please write a friendly, conversational response explaining why these tracks match their request. Be enthusiastic about the music!`;
+Write a SHORT response (2-3 sentences max) explaining why these SONGS match their request. Don't list the songs - they can see them. Just briefly say why they'll like them. Be warm but concise. NEVER mention playlists!`;
 
       const response = await groqClient.sendMessage(contextMessage, conversationHistory);
       return response;
@@ -433,6 +451,21 @@ Please write a friendly, conversational response explaining why these tracks mat
     // Use explicit genre from intent
     if (intent.genre) {
       genres.push(intent.genre);
+      
+      // Add related genres for better discovery
+      const genreMap: Record<string, string[]> = {
+        'opm': ['filipino music', 'pinoy music', 'tagalog'],
+        'filipino': ['opm', 'pinoy music', 'tagalog'],
+        'pinoy': ['opm', 'filipino music', 'tagalog'],
+        'pop': ['indie pop', 'alternative'],
+        'rock': ['indie rock', 'alternative rock'],
+        'rnb': ['r&b', 'soul'],
+      };
+      
+      const relatedGenres = genreMap[intent.genre.toLowerCase()];
+      if (relatedGenres) {
+        genres.push(...relatedGenres);
+      }
     }
 
     // Map mood to genres
@@ -479,6 +512,12 @@ Please write a friendly, conversational response explaining why these tracks mat
       'Ambient': ['Brian Eno', 'Tycho', 'Boards of Canada'],
       'Alternative': ['Radiohead', 'Bon Iver', 'The National'],
       'R&B': ['Frank Ocean', 'SZA', 'Daniel Caesar'],
+      'opm': ['Ben&Ben', 'Moira Dela Torre', 'December Avenue', 'IV of Spades', 'SB19', 'Mayonnaise'],
+      'filipino music': ['Ben&Ben', 'Moira Dela Torre', 'December Avenue', 'IV of Spades', 'SB19'],
+      'pinoy music': ['Ben&Ben', 'Moira Dela Torre', 'December Avenue', 'IV of Spades', 'SB19'],
+      'tagalog': ['Ben&Ben', 'Moira Dela Torre', 'December Avenue', 'IV of Spades', 'SB19'],
+      'filipino': ['Ben&Ben', 'Moira Dela Torre', 'December Avenue', 'IV of Spades', 'SB19'],
+      'pinoy': ['Ben&Ben', 'Moira Dela Torre', 'December Avenue', 'IV of Spades', 'SB19'],
     };
 
     const artists: string[] = [];

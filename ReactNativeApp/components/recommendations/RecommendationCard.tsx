@@ -87,11 +87,12 @@ const RecommendationCard: React.FC<RecommendationCardProps> = React.memo(
     // Variant-specific dimensions and styles (matching Figma web design)
     const getVariantStyles = () => {
       const isHighlight = variant === 'highlight';
-      const imageSize = isHighlight ? 112 : 140; // w-28 (112px) for highlight, square for others
+      const imageSize = isHighlight ? 112 : 160; // w-28 (112px) for highlight, 160px for others
 
       const baseContainer: ViewStyle = {
         borderRadius: designSystem.borderRadius.xl,
         overflow: 'hidden',
+        zIndex: 10,
       };
 
       switch (variant) {
@@ -116,7 +117,8 @@ const RecommendationCard: React.FC<RecommendationCardProps> = React.memo(
             imageSize,
             container: {
               ...baseContainer,
-              width: 140,
+              width: 180,
+              padding: designSystem.spacing[3],
               backgroundColor: 'rgba(55, 65, 81, 0.5)', // gray-700/50
             } as ViewStyle,
             layout: 'column' as const,
@@ -126,7 +128,7 @@ const RecommendationCard: React.FC<RecommendationCardProps> = React.memo(
 
         default:
           return {
-            imageSize: 140,
+            imageSize: 160,
             container: baseContainer,
             layout: 'column' as const,
             showGradient: false,
@@ -153,10 +155,11 @@ const RecommendationCard: React.FC<RecommendationCardProps> = React.memo(
     };
 
     const contentContainerStyle: ViewStyle = {
-      flex: 1,
+      flex: variant === 'highlight' ? 1 : undefined,
       marginLeft: variantStyles.layout === 'row' ? designSystem.spacing[4] : 0,
       marginTop: variantStyles.layout === 'column' ? designSystem.spacing[3] : 0,
       justifyContent: 'space-between',
+      paddingVertical: variantStyles.layout === 'column' ? designSystem.spacing[2] : 0,
     };
 
     const titleStyle: TextStyle = {
@@ -170,6 +173,7 @@ const RecommendationCard: React.FC<RecommendationCardProps> = React.memo(
           : designSystem.typography.fontWeight.medium,
       color: '#FFFFFF',
       marginBottom: designSystem.spacing[1],
+      lineHeight: variant === 'highlight' ? 24 : 18,
     };
 
     const artistStyle: TextStyle = {
@@ -179,7 +183,8 @@ const RecommendationCard: React.FC<RecommendationCardProps> = React.memo(
           : designSystem.typography.fontSize.xs,
       fontWeight: designSystem.typography.fontWeight.regular,
       color: variant === 'highlight' ? '#D1D5DB' : '#9CA3AF', // gray-300 / gray-400
-      marginBottom: variant === 'highlight' ? 0 : designSystem.spacing[3],
+      marginBottom: variant === 'highlight' ? 0 : designSystem.spacing[2],
+      lineHeight: variant === 'highlight' ? 18 : 14,
     };
 
     return (
@@ -244,8 +249,8 @@ const RecommendationCard: React.FC<RecommendationCardProps> = React.memo(
 
             {/* Content */}
             <View style={contentContainerStyle}>
-              <View style={{ flex: 1 }}>
-                <Text style={titleStyle} numberOfLines={1} ellipsizeMode="tail">
+              <View>
+                <Text style={titleStyle} numberOfLines={2} ellipsizeMode="tail">
                   {recommendation.title}
                 </Text>
                 <Text style={artistStyle} numberOfLines={1} ellipsizeMode="tail">
@@ -313,9 +318,11 @@ const RecommendationCard: React.FC<RecommendationCardProps> = React.memo(
                     alignItems: 'center',
                     justifyContent: 'center',
                     gap: designSystem.spacing[2],
-                    paddingVertical: designSystem.spacing[2],
+                    paddingVertical: designSystem.spacing[3],
+                    paddingHorizontal: designSystem.spacing[2],
                     borderRadius: designSystem.borderRadius.lg,
                     backgroundColor: 'rgba(31, 41, 55, 0.5)', // gray-800/50
+                    minHeight: 44,
                   }}
                 >
                   <Ionicons
