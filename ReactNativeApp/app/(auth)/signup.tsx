@@ -8,14 +8,14 @@ import {
   SafeAreaView,
   KeyboardAvoidingView,
   Platform,
-  ActivityIndicator,
-  Alert,
   ScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/services/api/supabase';
+import CustomAlert from '@/components/ui/CustomAlert';
+import LoadingOverlay from '@/components/ui/LoadingOverlay';
 
 export default function SignupScreen() {
   const [name, setName] = useState('');
@@ -25,54 +25,147 @@ export default function SignupScreen() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [alert, setAlert] = useState<{
+    visible: boolean;
+    type: 'success' | 'error' | 'warning' | 'info';
+    title: string;
+    message: string;
+  }>({ visible: false, type: 'info', title: '', message: '' });
 
   const handleSignup = async () => {
-    if (!name.trim() || !email.trim() || !password.trim()) {
-      Alert.alert('Error', 'Please fill in all fields');
+    // Validation
+    if (!name.trim()) {
+      setAlert({
+        visible: true,
+        type: 'warning',
+        title: 'Name Required',
+        message: 'Please enter your name',
+      });
+      return;
+    }
+
+    if (!email.trim()) {
+      setAlert({
+        visible: true,
+        type: 'warning',
+        title: 'Email Required',
+        message: 'Please enter your email address',
+      });
+      return;
+    }
+
+    // Email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      setAlert({
+        visible: true,
+        type: 'error',
+        title: 'Invalid Email',
+        message: 'Please enter a valid email address',
+      });
+      return;
+    }
+
+    if (!password.trim()) {
+      setAlert({
+        visible: true,
+        type: 'warning',
+        title: 'Password Required',
+        message: 'Please enter a password',
+      });
       return;
     }
 
     if (password.length < 8) {
-      Alert.alert('Error', 'Password must be at least 8 characters');
+      setAlert({
+        visible: true,
+        type: 'error',
+        title: 'Password Too Short',
+        message: 'Password must be at least 8 characters long',
+      });
       return;
     }
 
     if (password !== confirmPassword) {
-      Alert.alert('Error', 'Passwords do not match');
+      setAlert({
+        visible: true,
+        type: 'error',
+        title: 'Passwords Don\'t Match',
+        message: 'Please make sure your passwords match',
+      });
       return;
     }
 
     setLoading(true);
     try {
       if (!supabase) {
-        Alert.alert('Error', 'Authentication service not configured');
+        setAlert({
+          visible: true,
+          type: 'error',
+          title: 'Service Unavailable',
+          message: 'Authentication service is not configured. Please check your environment settings.',
+        });
+        setLoading(false);
         return;
       }
 
       const { data, error } = await supabase.auth.signUp({
-        email: email.trim(),
+        email: email.trim().toLowerCase(),
         password,
         options: {
           data: {
             name: name.trim(),
           },
+          emailRedirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
         },
       });
 
-      if (error) throw error;
+      console.log('Signup response:', { data, error });
 
-      Alert.alert(
-        'Success!',
-        'Account created successfully. Please check your email to verify your account.',
-        [
-          {
-            text: 'OK',
-            onPress: () => router.replace('/(auth)/login'),
-          },
-        ]
-      );
+      if (error) {
+        console.error('Signup error details:', error);
+        let errorMessage = 'Unable to create account. Please try again.';
+        
+        if (error.message.includes('already registered')) {
+          errorMessage = 'This email is already registered. Please sign in instead.';
+        } else if (error.message.includes('Password should be')) {
+          errorMessage = error.message;
+        } else if (error.message.includes('rate limit')) {
+          errorMessage = 'Too many attempts. Please wait a moment and try again.';
+        } else if (error.message) {
+          // Show the actual error message from Supabase
+          errorMessage = error.message;
+        }
+
+        setAlert({
+          visible: true,
+          type: 'error',
+          title: 'Signup Failed',
+          message: errorMessage,
+        });
+        return;
+      }
+
+      // Success
+      setAlert({
+        visible: true,
+        type: 'success',
+        title: 'Account Created!',
+        message: 'Please check your email to verify your account, then sign in.',
+      });
+
+      // Navigate to login after showing success
+      setTimeout(() => {
+        router.replace('/(auth)/login');
+      }, 2500);
     } catch (error: any) {
-      Alert.alert('Signup Failed', error.message || 'Could not create account');
+      console.error('Signup error:', error);
+      setAlert({
+        visible: true,
+        type: 'error',
+        title: 'Unexpected Error',
+        message: 'Something went wrong. Please try again.',
+      });
     } finally {
       setLoading(false);
     }
@@ -83,6 +176,16 @@ export default function SignupScreen() {
       <LinearGradient
         colors={['#030712', '#111827']}
         style={StyleSheet.absoluteFill}
+      />
+
+      <LoadingOverlay visible={loading} message="Creating account..." />
+      
+      <CustomAlert
+        visible={alert.visible}
+        type={alert.type}
+        title={alert.title}
+        message={alert.message}
+        onClose={() => setAlert({ ...alert, visible: false })}
       />
 
       <KeyboardAvoidingView
@@ -196,11 +299,7 @@ export default function SignupScreen() {
                 onPress={handleSignup}
                 disabled={loading}
               >
-                {loading ? (
-                  <ActivityIndicator color="#FFFFFF" />
-                ) : (
-                  <Text style={styles.signupButtonText}>Create Account</Text>
-                )}
+                <Text style={styles.signupButtonText}>Create Account</Text>
               </Pressable>
 
               <Text style={styles.terms}>

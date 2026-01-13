@@ -7,45 +7,75 @@ import { supabase } from '@/services/api/supabase';
 
 export default function RootLayout() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const [isReady, setIsReady] = useState(false);
   const segments = useSegments();
 
   // Check authentication state
   useEffect(() => {
-    if (!supabase) {
-      setIsAuthenticated(false);
-      return;
-    }
+    let mounted = true;
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setIsAuthenticated(!!session);
+    const initAuth = async () => {
+      if (!supabase) {
+        console.log('Supabase not configured, auth disabled');
+        if (mounted) {
+          setIsAuthenticated(false);
+          setIsReady(true);
+        }
+        return;
+      }
+
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        console.log('Initial session:', session ? 'authenticated' : 'not authenticated');
+        
+        if (mounted) {
+          setIsAuthenticated(!!session);
+          setIsReady(true);
+        }
+      } catch (error) {
+        console.error('Error checking session:', error);
+        if (mounted) {
+          setIsAuthenticated(false);
+          setIsReady(true);
+        }
+      }
+    };
+
+    initAuth();
+
+    // Subscribe to auth changes
+    const subscription = supabase?.auth.onAuthStateChange((event, session) => {
+      console.log('Auth state changed:', event, session ? 'authenticated' : 'not authenticated');
+      if (mounted) {
+        setIsAuthenticated(!!session);
+      }
     });
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setIsAuthenticated(!!session);
-    });
-
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      subscription?.data?.subscription?.unsubscribe();
+    };
   }, []);
 
   // Handle navigation based on auth state
   useEffect(() => {
-    if (isAuthenticated === null) return; // Still loading
+    if (!isReady || isAuthenticated === null) return;
 
     const inAuthGroup = segments[0] === '(auth)';
 
-    if (!isAuthenticated && !inAuthGroup) {
-      // Redirect to auth if not authenticated
-      router.replace('/(auth)/splash');
-    } else if (isAuthenticated && inAuthGroup) {
-      // Redirect to main app if authenticated
-      router.replace('/(tabs)');
-    }
-  }, [isAuthenticated, segments]);
+    setTimeout(() => {
+      if (!isAuthenticated && !inAuthGroup) {
+        console.log('Not authenticated, redirecting to auth');
+        router.replace('/(auth)/splash');
+      } else if (isAuthenticated && inAuthGroup) {
+        console.log('Authenticated, redirecting to main app');
+        router.replace('/(tabs)');
+      }
+    }, 100);
+  }, [isAuthenticated, isReady, segments]);
 
   // Show nothing while checking auth
-  if (isAuthenticated === null) {
+  if (!isReady || isAuthenticated === null) {
     return null;
   }
 

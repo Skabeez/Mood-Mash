@@ -8,44 +8,119 @@ import {
   SafeAreaView,
   KeyboardAvoidingView,
   Platform,
-  ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/services/api/supabase';
+import CustomAlert from '@/components/ui/CustomAlert';
+import LoadingOverlay from '@/components/ui/LoadingOverlay';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [alert, setAlert] = useState<{
+    visible: boolean;
+    type: 'success' | 'error' | 'warning' | 'info';
+    title: string;
+    message: string;
+  }>({ visible: false, type: 'info', title: '', message: '' });
 
   const handleLogin = async () => {
-    if (!email.trim() || !password.trim()) {
-      Alert.alert('Error', 'Please fill in all fields');
+    // Validation
+    if (!email.trim()) {
+      setAlert({
+        visible: true,
+        type: 'warning',
+        title: 'Email Required',
+        message: 'Please enter your email address',
+      });
+      return;
+    }
+
+    if (!password.trim()) {
+      setAlert({
+        visible: true,
+        type: 'warning',
+        title: 'Password Required',
+        message: 'Please enter your password',
+      });
+      return;
+    }
+
+    // Email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      setAlert({
+        visible: true,
+        type: 'error',
+        title: 'Invalid Email',
+        message: 'Please enter a valid email address',
+      });
       return;
     }
 
     setLoading(true);
     try {
       if (!supabase) {
-        Alert.alert('Error', 'Authentication service not configured');
+        setAlert({
+          visible: true,
+          type: 'error',
+          title: 'Service Unavailable',
+          message: 'Authentication service is not configured. Please check your environment settings.',
+        });
+        setLoading(false);
         return;
       }
 
       const { data, error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
+        email: email.trim().toLowerCase(),
         password,
       });
 
-      if (error) throw error;
+      if (error) {
+        // Handle specific error types
+        let errorMessage = 'Unable to sign in. Please try again.';
+        
+        if (error.message.includes('Invalid login credentials')) {
+          errorMessage = 'Invalid email or password. Please check your credentials and try again.';
+        } else if (error.message.includes('Email not confirmed')) {
+          errorMessage = 'Please verify your email address before signing in.';
+        } else if (error.message.includes('Too many requests')) {
+          errorMessage = 'Too many login attempts. Please wait a moment and try again.';
+        }
 
-      // Navigate to main app
-      router.replace('/(tabs)');
+        setAlert({
+          visible: true,
+          type: 'error',
+          title: 'Login Failed',
+          message: errorMessage,
+        });
+        return;
+      }
+
+      // Success - navigation will be handled by auth state listener
+      setAlert({
+        visible: true,
+        type: 'success',
+        title: 'Welcome Back!',
+        message: 'Successfully signed in',
+      });
+      
+      // Small delay for success message
+      setTimeout(() => {
+        router.replace('/(tabs)');
+      }, 1000);
     } catch (error: any) {
-      Alert.alert('Login Failed', error.message || 'Invalid credentials');
+      console.error('Login error:', error);
+      setAlert({
+        visible: true,
+        type: 'error',
+        title: 'Unexpected Error',
+        message: 'Something went wrong. Please try again.',
+      });
     } finally {
       setLoading(false);
     }
@@ -56,6 +131,16 @@ export default function LoginScreen() {
       <LinearGradient
         colors={['#030712', '#111827']}
         style={StyleSheet.absoluteFill}
+      />
+
+      <LoadingOverlay visible={loading} message="Signing in..." />
+      
+      <CustomAlert
+        visible={alert.visible}
+        type={alert.type}
+        title={alert.title}
+        message={alert.message}
+        onClose={() => setAlert({ ...alert, visible: false })}
       />
 
       <KeyboardAvoidingView
@@ -128,11 +213,7 @@ export default function LoginScreen() {
               onPress={handleLogin}
               disabled={loading}
             >
-              {loading ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <Text style={styles.loginButtonText}>Sign In</Text>
-              )}
+              <Text style={styles.loginButtonText}>Sign In</Text>
             </Pressable>
           </View>
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,60 +8,37 @@ import {
   Image,
   Modal,
   TextInput,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
+import { supabase, getUserProfile, getUserFavorites, getCurrentUser, saveFavoriteSong, removeFavoriteSong, updateUserProfile } from '@/services/api/supabase';
 import { designSystem } from '@/constants/designSystem';
 import { StatCard } from '@/components/profile/StatCard';
 import { PreferenceChip } from '@/components/profile/PreferenceChip';
 import { SettingItem } from '@/components/profile/SettingItem';
 import { Recommendation } from '@/types';
+import CustomAlert from '@/components/ui/CustomAlert';
+import LoadingOverlay from '@/components/ui/LoadingOverlay';
 
-// Mock user data
-const mockUser = {
-  name: 'Music User',
+// Mock user data structure for type safety
+const defaultUser = {
+  name: 'User',
   email: 'user@example.com',
-  initials: 'MU',
+  initials: 'U',
   avatarUrl: null,
 };
 
-const mockFavorites: Recommendation[] = [
-  {
-    id: 'h1',
-    title: 'Weightless',
-    artist: 'Marconi Union',
-    albumArt: 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?w=300&h=300&fit=crop',
-    youtubeId: 'UfcAVejslrU',
-    type: 'highlight',
-    duration: '8:00',
-  },
-  {
-    id: 'd1',
-    title: 'Arrival',
-    artist: 'Helios',
-    albumArt: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=300&h=300&fit=crop',
-    youtubeId: 'example1',
-    type: 'deep-cut',
-    duration: '6:30',
-  },
-  {
-    id: 'm2',
-    title: 'Holocene',
-    artist: 'Bon Iver',
-    albumArt: 'https://images.unsplash.com/photo-1487180144351-b8472da7d491?w=300&h=300&fit=crop',
-    youtubeId: 'example7',
-    type: 'mainstream',
-    duration: '5:30',
-  },
-];
+const mockFavorites: Recommendation[] = [];
 
 const ProfileScreen: React.FC = () => {
-  const [user, setUser] = useState(mockUser);
-  const [favorites, setFavorites] = useState<Set<string>>(new Set(['h1', 'd1', 'm2']));
-  const [favoriteGenres, setFavoriteGenres] = useState(['Ambient', 'Electronic', 'Indie', 'Alternative']);
-  const [favoriteMoods, setFavoriteMoods] = useState(['Chill', 'Upbeat', 'Melancholic', 'Energetic']);
+  const [user, setUser] = useState(defaultUser);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [favorites, setFavorites] = useState<Recommendation[]>([]);
+  const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
+  const [favoriteGenres, setFavoriteGenres] = useState<string[]>([]);
+  const [favoriteMoods, setFavoriteMoods] = useState<string[]>([]);
   const [lastfmConnected, setLastfmConnected] = useState(false);
   const [lastfmUsername, setLastfmUsername] = useState('');
   const [youtubeConnected, setYoutubeConnected] = useState(true);
@@ -77,19 +54,132 @@ const ProfileScreen: React.FC = () => {
   const [editName, setEditName] = useState(user.name);
   const [editEmail, setEditEmail] = useState(user.email);
   const [newGenre, setNewGenre] = useState('');
+  
+  // Auth & UI states
+  const [loading, setLoading] = useState(true);
+  const [alert, setAlert] = useState<{
+    visible: boolean;
+    type: 'success' | 'error' | 'warning' | 'info';
+    title: string;
+    message: string;
+    onSecondaryPress?: () => void;
+    secondaryButtonText?: string;
+  }>({ visible: false, type: 'info', title: '', message: '' });
 
-  const favoriteSongs = mockFavorites.filter((song) => favorites.has(song.id));
+  // Load real user data from Supabase
+  useEffect(() => {
+    const loadUserData = async () => {
+      try {
+        setLoading(true);
+        
+        // Get current user
+        const currentUser = await getCurrentUser();
+        if (!currentUser) {
+          console.error('No authenticated user found');
+          setLoading(false);
+          return;
+        }
 
-  const handleToggleFavorite = (songId: string) => {
-    setFavorites((prev) => {
-      const newFavorites = new Set(prev);
-      if (newFavorites.has(songId)) {
-        newFavorites.delete(songId);
-      } else {
-        newFavorites.add(songId);
+        setUserId(currentUser.id);
+        
+        // Get user profile from database
+        const userProfile = await getUserProfile(currentUser.id);
+        if (userProfile) {
+          const initials = userProfile.username 
+            ? userProfile.username.substring(0, 2).toUpperCase()
+            : 'U';
+          setUser({
+            name: userProfile.username || 'User',
+            email: userProfile.email || currentUser.email || '',
+            initials,
+            avatarUrl: userProfile.avatar_url || null,
+          });
+          setEditName(userProfile.username || 'User');
+          setEditEmail(userProfile.email || '');
+
+          // Get user preferences if available
+          if (userProfile.favorite_genres) {
+            setFavoriteGenres(userProfile.favorite_genres);
+          }
+          if (userProfile.favorite_moods) {
+            setFavoriteMoods(userProfile.favorite_moods);
+          }
+        } else {
+          // Use email as fallback
+          const initials = (currentUser.email || 'U').substring(0, 2).toUpperCase();
+          setUser({
+            name: currentUser.user_metadata?.full_name || currentUser.email?.split('@')[0] || 'User',
+            email: currentUser.email || '',
+            initials,
+            avatarUrl: null,
+          });
+          setEditName(currentUser.email?.split('@')[0] || 'User');
+          setEditEmail(currentUser.email || '');
+        }
+
+        // Get user favorites
+        const userFavorites = await getUserFavorites(currentUser.id);
+        if (userFavorites && userFavorites.length > 0) {
+          const favIds = new Set(userFavorites.map((f: any) => f.id));
+          setFavorites(userFavorites);
+          setFavoriteIds(favIds);
+        }
+
+        setLoading(false);
+      } catch (error) {
+        console.error('Error loading user data:', error);
+        setLoading(false);
+        setAlert({
+          visible: true,
+          type: 'error',
+          title: 'Error',
+          message: 'Failed to load profile data',
+        });
       }
-      return newFavorites;
-    });
+    };
+
+    loadUserData();
+  }, []);
+
+  const favoriteSongs = favorites;
+
+  const handleToggleFavorite = async (song: Recommendation) => {
+    if (!userId) return;
+
+    try {
+      if (favoriteIds.has(song.id)) {
+        // Remove from favorites
+        const { error } = await removeFavoriteSong(userId, song.id);
+        if (error) throw error;
+        
+        setFavorites((prev) => prev.filter((f) => f.id !== song.id));
+        setFavoriteIds((prev) => {
+          const newSet = new Set(prev);
+          newSet.delete(song.id);
+          return newSet;
+        });
+      } else {
+        // Add to favorites
+        const { error } = await saveFavoriteSong(userId, song.id, {
+          title: song.title,
+          artist: song.artist,
+          albumArt: song.albumArt,
+          youtubeId: song.youtubeId,
+        });
+        if (error) throw error;
+        
+        setFavorites((prev) => [...prev, song]);
+        setFavoriteIds((prev) => new Set([...prev, song.id]));
+      }
+    } catch (error) {
+      console.error('Error toggling favorite:', error);
+      setAlert({
+        visible: true,
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to update favorites',
+      });
+    }
   };
 
   const handleRemoveGenre = (genre: string) => {
@@ -108,24 +198,94 @@ const ProfileScreen: React.FC = () => {
     setFavoriteMoods((prev) => prev.filter((m) => m !== mood));
   };
 
-  const handleSaveProfile = () => {
-    setUser({ ...user, name: editName, email: editEmail });
-    setEditProfileModal(false);
+  const handleSaveProfile = async () => {
+    if (!userId) return;
+
+    try {
+      setLoading(true);
+      const { error } = await updateUserProfile(userId, {
+        username: editName,
+        email: editEmail,
+        favorite_genres: favoriteGenres,
+        favorite_moods: favoriteMoods,
+      });
+
+      if (error) throw error;
+
+      setUser({ 
+        ...user, 
+        name: editName, 
+        email: editEmail,
+        initials: editName.substring(0, 2).toUpperCase(),
+      });
+      setEditProfileModal(false);
+      
+      setAlert({
+        visible: true,
+        type: 'success',
+        title: 'Profile Updated',
+        message: 'Your profile has been saved successfully!',
+      });
+    } catch (error) {
+      console.error('Error saving profile:', error);
+      setAlert({
+        visible: true,
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to save profile',
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleClearCache = () => {
-    Alert.alert('Clear Cache', 'Cache cleared successfully!');
+    setAlert({
+      visible: true,
+      type: 'success',
+      title: 'Cache Cleared',
+      message: 'All cached data has been cleared successfully!',
+    });
   };
 
   const handleAbout = () => {
-    Alert.alert('About', 'Music Highlight App v1.0.0\n\nYour personal music companion powered by AI.');
+    setAlert({
+      visible: true,
+      type: 'info',
+      title: 'About',
+      message: 'Mood Mash v1.0.0\n\nYour AI-powered music companion for discovering perfect tracks for every mood.',
+    });
   };
 
   const handleLogout = () => {
-    Alert.alert('Logout', 'Are you sure you want to logout?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Logout', style: 'destructive', onPress: () => console.log('Logged out') },
-    ]);
+    setAlert({
+      visible: true,
+      type: 'warning',
+      title: 'Sign Out',
+      message: 'Are you sure you want to sign out?',
+      secondaryButtonText: 'Cancel',
+      onSecondaryPress: () => {},
+    });
+  };
+
+  const handleConfirmLogout = async () => {
+    setLoading(true);
+    try {
+      if (supabase) {
+        await supabase.auth.signOut();
+      }
+      router.replace('/(auth)/welcome');
+    } catch (error) {
+      console.error('Logout error:', error);
+      setAlert({
+        visible: true,
+        type: 'error',
+        title: 'Logout Failed',
+        message: 'Unable to sign out. Please try again.',
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleConnectLastfm = () => {
@@ -143,6 +303,24 @@ const ProfileScreen: React.FC = () => {
       <LinearGradient
         colors={['#030712', '#111827']} // gray-950 to gray-900
         style={StyleSheet.absoluteFill}
+      />
+
+      <LoadingOverlay visible={loading} message="Signing out..." />
+      
+      <CustomAlert
+        visible={alert.visible}
+        type={alert.type}
+        title={alert.title}
+        message={alert.message}
+        primaryButtonText={alert.type === 'warning' && alert.title === 'Sign Out' ? 'Sign Out' : 'OK'}
+        secondaryButtonText={alert.secondaryButtonText}
+        onSecondaryPress={alert.onSecondaryPress}
+        onClose={() => {
+          if (alert.type === 'warning' && alert.title === 'Sign Out') {
+            handleConfirmLogout();
+          }
+          setAlert({ ...alert, visible: false });
+        }}
       />
 
       <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -300,7 +478,7 @@ const ProfileScreen: React.FC = () => {
                           {song.artist}
                         </Text>
                       </View>
-                      <Pressable onPress={() => handleToggleFavorite(song.id)}>
+                      <Pressable onPress={() => handleToggleFavorite(song)}>
                         <Ionicons name="heart" size={20} color="#EC4899" />
                       </Pressable>
                     </View>

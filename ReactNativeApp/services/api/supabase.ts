@@ -9,12 +9,31 @@ import { SupabaseProfile, SupabaseAuthResponse } from '@/types/api';
 
 // Initialize Supabase client
 const createSupabaseClient = (): SupabaseClient | null => {
-  if (env.supabaseUrl === 'http://localhost:54321' || env.supabaseAnonKey === 'dev_placeholder') {
+  // Check if we have actual values (not placeholders)
+  if (!env.supabaseUrl || 
+      !env.supabaseAnonKey || 
+      env.supabaseUrl === 'http://localhost:54321' || 
+      env.supabaseAnonKey === 'dev_placeholder' ||
+      env.supabaseUrl.includes('your_') ||
+      env.supabaseAnonKey.includes('your_')) {
     console.warn('⚠️  Supabase not configured. Authentication features disabled.');
     return null;
   }
 
-  return createClient(env.supabaseUrl, env.supabaseAnonKey);
+  try {
+    const client = createClient(env.supabaseUrl, env.supabaseAnonKey, {
+      auth: {
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: true,
+      },
+    });
+    console.log('✅ Supabase client initialized');
+    return client;
+  } catch (error) {
+    console.error('❌ Failed to initialize Supabase:', error);
+    return null;
+  }
 };
 
 export const supabase = createSupabaseClient();
@@ -106,9 +125,10 @@ export async function signUpWithEmail(
     // Create user profile
     if (data.user) {
       const { error: profileError } = await supabase
-        .from('profiles')
+        .from('users')
         .insert({
-          user_id: data.user.id,
+          id: data.user.id,
+          email: email,
           username,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
@@ -218,9 +238,9 @@ export async function getUserProfile(userId: string): Promise<SupabaseProfile | 
     }
 
     const { data, error } = await supabase
-      .from('profiles')
+      .from('users')
       .select('*')
-      .eq('user_id', userId)
+      .eq('id', userId)
       .single();
 
     if (error) {
@@ -251,12 +271,12 @@ export async function updateUserProfile(
     }
 
     const { error } = await supabase
-      .from('profiles')
+      .from('users')
       .update({
         ...updates,
         updated_at: new Date().toISOString(),
       })
-      .eq('user_id', userId);
+      .eq('id', userId);
 
     if (error) {
       throw error;
