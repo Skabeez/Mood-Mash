@@ -1,6 +1,6 @@
 /**
- * DeepSeek AI API Client
- * Handles communication with DeepSeek API for music recommendations and chat
+ * Groq AI API Client
+ * Handles communication with Groq API for music recommendations and chat
  */
 
 import { env } from '@/config/env';
@@ -13,7 +13,7 @@ import {
   ApiError,
 } from '@/types/api';
 
-const DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions';
+const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const REQUEST_TIMEOUT = 30000; // 30 seconds
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 1000; // 1 second
@@ -32,21 +32,21 @@ You can understand requests like:
 - "Songs like [artist/song]"
 - "Chill music for studying"`;
 
-export class DeepSeekClient {
+export class GroqClient {
   private apiKey: string;
   private baseURL: string;
 
   constructor(apiKey?: string) {
-    this.apiKey = apiKey || env.deepseekApiKey;
-    this.baseURL = DEEPSEEK_API_URL;
+    this.apiKey = apiKey || env.groqApiKey;
+    this.baseURL = GROQ_API_URL;
 
     if (this.apiKey === 'dev_placeholder') {
-      console.warn('⚠️  DeepSeek API key not configured. Using mock responses.');
+      console.warn('⚠️  Groq API key not configured. Using mock responses.');
     }
   }
 
   /**
-   * Sends a message to DeepSeek API with conversation history
+   * Sends a message to Groq API with conversation history
    */
   async sendMessage(
     userMessage: string,
@@ -62,7 +62,7 @@ export class DeepSeekClient {
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
         if (env.isDevelopment) {
-          console.log(`🤖 DeepSeek API Request (Attempt ${attempt}/${MAX_RETRIES}):`, {
+          console.log(`🤖 Groq API Request (Attempt ${attempt}/${MAX_RETRIES}):`, {
             messageCount: messages.length,
             userMessage: userMessage.substring(0, 100),
           });
@@ -73,11 +73,11 @@ export class DeepSeekClient {
         const aiMessage = response.choices[0]?.message?.content;
         
         if (!aiMessage) {
-          throw new Error('Empty response from DeepSeek API');
+          throw new Error('Empty response from Groq API');
         }
 
         if (env.isDevelopment) {
-          console.log('✅ DeepSeek API Response:', {
+          console.log('✅ Groq API Response:', {
             tokens: response.usage.total_tokens,
             preview: aiMessage.substring(0, 100),
           });
@@ -94,11 +94,11 @@ export class DeepSeekClient {
       }
     }
 
-    throw new Error('Failed to get response from DeepSeek API after retries');
+    throw new Error('Failed to get response from Groq API after retries');
   }
 
   /**
-   * Extracts user intent from message using DeepSeek
+   * Extracts user intent from message using Groq
    */
   async extractIntent(userMessage: string): Promise<DeepSeekIntent> {
     // Return mock intent if API key not configured
@@ -141,7 +141,7 @@ JSON:`;
   }
 
   /**
-   * Formats conversation history for DeepSeek API
+   * Formats conversation history for Groq API
    */
   private formatMessages(
     userMessage: string,
@@ -187,7 +187,7 @@ JSON:`;
           'Authorization': `Bearer ${this.apiKey}`,
         },
         body: JSON.stringify({
-          model: 'deepseek-chat',
+          model: 'llama-3.3-70b-versatile',
           messages,
           temperature: 0.7,
           max_tokens: 1000,
@@ -292,4 +292,4 @@ JSON:`;
 }
 
 // Export singleton instance
-export const deepseekClient = new DeepSeekClient();
+export const groqClient = new GroqClient();

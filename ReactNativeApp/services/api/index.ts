@@ -3,7 +3,7 @@
  * Central export point for all API clients
  */
 
-export { DeepSeekClient, deepseekClient } from './deepseek';
+export { GroqClient, groqClient } from './groq';
 export { LastFmClient, lastfmClient } from './lastfm';
 export { YouTubeClient, youtubeClient } from './youtube';
 export {

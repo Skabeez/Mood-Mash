@@ -3,7 +3,7 @@
  * Orchestrates all API clients to generate personalized music recommendations
  */
 
-import { deepseekClient } from './api/deepseek';
+import { groqClient } from './api/groq';
 import { lastfmClient } from './api/lastfm';
 import { youtubeClient } from './api/youtube';
 import { Message, Recommendation, RecommendationType } from '@/types';
@@ -67,7 +67,7 @@ export class RecommendationEngine {
       }
 
       // Step 1: Extract intent from user message
-      const intent = await deepseekClient.extractIntent(userMessage);
+      const intent = await groqClient.extractIntent(userMessage);
       if (env.isDevelopment) {
         console.log('📊 Extracted intent:', intent);
       }
@@ -299,7 +299,7 @@ Intent detected: ${JSON.stringify(intent)}
 
 Please write a friendly, conversational response explaining why these tracks match their request. Be enthusiastic about the music!`;
 
-      const response = await deepseekClient.sendMessage(contextMessage, conversationHistory);
+      const response = await groqClient.sendMessage(contextMessage, conversationHistory);
       return response;
     } catch (error) {
       console.error('Error generating AI response:', error);
@@ -614,7 +614,7 @@ Please write a friendly, conversational response explaining why these tracks mat
 
     let aiResponse: string;
     try {
-      aiResponse = await deepseekClient.sendMessage(userMessage, conversationHistory);
+      aiResponse = await groqClient.sendMessage(userMessage, conversationHistory);
     } catch {
       aiResponse = "I've found some great music for you! These are some popular tracks that many people enjoy. Let me know what you think! 🎵";
     }

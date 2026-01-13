@@ -6,7 +6,7 @@
 import Constants from 'expo-constants';
 
 interface EnvConfig {
-  deepseekApiKey: string;
+  groqApiKey: string;
   lastfmApiKey: string;
   youtubeApiKey: string;
   supabaseUrl: string;
@@ -47,7 +47,7 @@ function getOptionalEnvVar(key: string): string | undefined {
  */
 function validateEnv(): void {
   const requiredVars = [
-    'DEEPSEEK_API_KEY',
+    'GROQ_API_KEY',
     'LASTFM_API_KEY',
     'YOUTUBE_API_KEY',
     'SUPABASE_URL',
@@ -82,7 +82,7 @@ function createEnvConfig(): EnvConfig {
   }
 
   return {
-    deepseekApiKey: getOptionalEnvVar('DEEPSEEK_API_KEY') || 'dev_placeholder',
+    groqApiKey: getOptionalEnvVar('GROQ_API_KEY') || 'dev_placeholder',
     lastfmApiKey: getOptionalEnvVar('LASTFM_API_KEY') || 'dev_placeholder',
     youtubeApiKey: getOptionalEnvVar('YOUTUBE_API_KEY') || 'dev_placeholder',
     supabaseUrl: getOptionalEnvVar('SUPABASE_URL') || 'http://localhost:54321',
@@ -97,7 +97,7 @@ export const env = createEnvConfig();
 // Log configuration status in development
 if (env.isDevelopment) {
   console.log('🔧 Environment Configuration:');
-  console.log(`  - DeepSeek API: ${env.deepseekApiKey !== 'dev_placeholder' ? '✓ Configured' : '✗ Missing'}`);
+  console.log(`  - Groq API: ${env.groqApiKey !== 'dev_placeholder' ? '✓ Configured' : '✗ Missing'}`);
   console.log(`  - Last.fm API: ${env.lastfmApiKey !== 'dev_placeholder' ? '✓ Configured' : '✗ Missing'}`);
   console.log(`  - YouTube API: ${env.youtubeApiKey !== 'dev_placeholder' ? '✓ Configured' : '✗ Missing'}`);
   console.log(`  - Supabase: ${env.supabaseUrl !== 'http://localhost:54321' ? '✓ Configured' : '✗ Missing'}`);
