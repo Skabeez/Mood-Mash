@@ -124,6 +124,29 @@ export interface LastFmTrackSearchResponse {
   };
 }
 
+export interface LastFmTrackInfoResponse {
+  track: {
+    name: string;
+    artist: {
+      name: string;
+      mbid?: string;
+      url?: string;
+    };
+    album?: {
+      title: string;
+      artist: string;
+      image: Array<{
+        '#text': string;
+        size: 'small' | 'medium' | 'large' | 'extralarge' | 'mega';
+      }>;
+    };
+    duration?: string;
+    listeners?: string;
+    playcount?: string;
+    url?: string;
+  };
+}
+
 export interface LastFmError {
   error: number;
   message: string;

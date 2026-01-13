@@ -58,21 +58,21 @@ const SuggestionChip: React.FC<SuggestionChipProps> = ({
         accessible={true}
         accessibilityLabel={accessibilityLabel || text}
         style={{
-          height: 40,
-          paddingHorizontal: designSystem.spacing[4],
+          height: 44,
+          paddingHorizontal: designSystem.spacing[5],
           borderRadius: designSystem.borderRadius.full,
-          borderWidth: 1.5,
-          borderColor: designSystem.colors.light.border.medium,
-          backgroundColor: designSystem.colors.light.surface.primary,
+          borderWidth: 2,
+          borderColor: '#374151', // gray-700
+          backgroundColor: '#1F2937', // gray-800
           alignItems: 'center' as const,
           justifyContent: 'center' as const,
         }}
       >
         <Text
           style={{
-            fontSize: designSystem.typography.fontSize.sm,
+            fontSize: designSystem.typography.fontSize.base,
             fontWeight: designSystem.typography.fontWeight.semibold,
-            color: designSystem.colors.primary.main,
+            color: '#A78BFA', // purple-400
             textAlign: 'center' as const,
           }}
         >
@@ -110,9 +110,9 @@ const WelcomeMessage: React.FC<WelcomeMessageProps> = ({
         {/* Greeting */}
         <Text
           style={{
-            fontSize: designSystem.typography.fontSize['2xl'],
+            fontSize: 32,
             fontWeight: designSystem.typography.fontWeight.bold,
-            color: designSystem.colors.light.text.primary,
+            color: '#F9FAFB', // gray-50
             textAlign: 'center' as const,
             marginBottom: designSystem.spacing[3],
           }}
@@ -123,12 +123,12 @@ const WelcomeMessage: React.FC<WelcomeMessageProps> = ({
         {/* Subtitle */}
         <Text
           style={{
-            fontSize: designSystem.typography.fontSize.base,
+            fontSize: designSystem.typography.fontSize.lg,
             fontWeight: designSystem.typography.fontWeight.regular,
-            color: designSystem.colors.light.text.secondary,
+            color: '#9CA3AF', // gray-400
             textAlign: 'center' as const,
             marginBottom: designSystem.spacing[12],
-            lineHeight: designSystem.typography.lineHeight.relaxed * designSystem.typography.fontSize.base,
+            lineHeight: 28,
           }}
         >
           Ask me for recommendations based on your mood, activity, or favorite artists

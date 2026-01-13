@@ -18,6 +18,8 @@ interface InputBarProps {
   isLoading?: boolean;
   placeholder?: string;
   accessibilityLabel?: string;
+  value?: string;
+  onChangeText?: (text: string) => void;
 }
 
 const InputBar: React.FC<InputBarProps> = ({
@@ -25,10 +27,16 @@ const InputBar: React.FC<InputBarProps> = ({
   isLoading = false,
   placeholder = 'Ask for music recommendations...',
   accessibilityLabel = 'Message input field',
+  value: externalValue,
+  onChangeText: externalOnChangeText,
 }) => {
-  const [text, setText] = useState('');
+  const [internalText, setInternalText] = useState('');
   const inputRef = useRef<TextInput>(null);
   const [contentHeight, setContentHeight] = useState<number>(designSystem.layout.input.height);
+
+  // Use external value if provided, otherwise use internal state
+  const text = externalValue !== undefined ? externalValue : internalText;
+  const setText = externalOnChangeText || setInternalText;
 
   const handleSend = async () => {
     if (text.trim() && !isLoading) {
@@ -52,32 +60,44 @@ const InputBar: React.FC<InputBarProps> = ({
 
   const containerStyle: ViewStyle = {
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'center',
+    gap: 12,
     paddingHorizontal: designSystem.spacing[4],
-    paddingVertical: designSystem.spacing[2],
-    backgroundColor: designSystem.colors.light.surface.primary,
+    paddingVertical: designSystem.spacing[4],
+    paddingBottom: designSystem.spacing[6],
+    backgroundColor: 'rgba(17, 24, 39, 0.8)', // gray-900/80
     borderTopWidth: 1,
-    borderTopColor: designSystem.colors.light.border.light,
+    borderTopColor: '#1F2937', // gray-800
+  };
+
+  const inputContainerStyle: ViewStyle = {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: designSystem.spacing[4],
+    paddingVertical: designSystem.spacing[1],
+    borderRadius: 999, // full
+    backgroundColor: '#1F2937', // gray-800
+    borderWidth: 0,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 8,
   };
 
   const inputStyle: TextStyle = {
     flex: 1,
-    minHeight: designSystem.layout.input.height,
+    minHeight: 44,
     maxHeight: designSystem.layout.input.multilineMaxHeight,
-    paddingHorizontal: designSystem.spacing[3],
     paddingVertical: designSystem.spacing[2],
-    borderRadius: designSystem.borderRadius.full,
-    backgroundColor: designSystem.colors.light.background.tertiary,
-    fontSize: designSystem.typography.fontSize.base,
+    fontSize: 15,
     fontWeight: designSystem.typography.fontWeight.regular,
-    color: designSystem.colors.light.text.primary,
-    marginRight: designSystem.spacing[2],
-    borderWidth: 1,
-    borderColor: designSystem.colors.light.border.light,
+    color: '#F3F4F6', // gray-100
   };
 
   const sendButtonDisabled = !text.trim() || isLoading;
-  const sendButtonSize = designSystem.components.button.icon.size;
+  const sendButtonSize = 40;
 
   return (
     <KeyboardAvoidingView
@@ -85,20 +105,22 @@ const InputBar: React.FC<InputBarProps> = ({
       keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
     >
       <View style={containerStyle}>
-        {/* Text Input */}
-        <TextInput
-          ref={inputRef}
-          style={[inputStyle, { height: contentHeight }]}
-          placeholder={placeholder}
-          placeholderTextColor={designSystem.colors.light.text.tertiary}
-          multiline
-          maxLength={500}
-          editable={!isLoading}
-          value={text}
-          onChangeText={setText}
-          onContentSizeChange={handleContentSizeChange}
-          accessibilityLabel={accessibilityLabel}
-        />
+        {/* Input Container with rounded full design */}
+        <View style={inputContainerStyle}>
+          <TextInput
+            ref={inputRef}
+            style={inputStyle}
+            placeholder={placeholder}
+            placeholderTextColor="#9CA3AF" // gray-400
+            multiline
+            maxLength={500}
+            editable={!isLoading}
+            value={text}
+            onChangeText={setText}
+            onContentSizeChange={handleContentSizeChange}
+            accessibilityLabel={accessibilityLabel}
+          />
+        </View>
 
         {/* Send Button */}
         <Pressable
@@ -110,27 +132,19 @@ const InputBar: React.FC<InputBarProps> = ({
           style={{
             width: sendButtonSize,
             height: sendButtonSize,
-            borderRadius: designSystem.borderRadius.full,
+            borderRadius: 999, // full
             backgroundColor: sendButtonDisabled
-              ? designSystem.colors.interactive.disabled
-              : designSystem.colors.primary.main,
+              ? '#6B7280' // gray-500
+              : '#9333EA', // purple-600
             justifyContent: 'center',
             alignItems: 'center',
-            marginBottom:
-              contentHeight === designSystem.layout.input.height
-                ? 0
-                : (contentHeight - designSystem.layout.input.height) / 2,
             opacity: isLoading ? 0.6 : 1,
           }}
         >
           <Ionicons
             name="send"
-            size={18}
-            color={
-              sendButtonDisabled
-                ? designSystem.colors.light.text.tertiary
-                : designSystem.colors.primary.foreground
-            }
+            size={16}
+            color="#FFFFFF"
           />
         </Pressable>
       </View>

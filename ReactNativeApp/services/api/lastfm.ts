@@ -11,6 +11,7 @@ import {
   LastFmSimilarArtistsResponse,
   LastFmTopTracksResponse,
   LastFmTrackSearchResponse,
+  LastFmTrackInfoResponse,
   LastFmError,
   ApiError,
 } from '@/types/api';
@@ -178,6 +179,43 @@ export class LastFmClient {
       return tracks;
     } catch (error) {
       throw this.handleError(error, 'searchTrack');
+    }
+  }
+
+  /**
+   * Gets detailed track information including album art
+   */
+  async getTrackInfo(artist: string, track: string): Promise<string | null> {
+    if (this.apiKey === 'dev_placeholder') {
+      return null;
+    }
+
+    try {
+      const params = {
+        method: 'track.getInfo',
+        artist: artist,
+        track: track,
+        api_key: this.apiKey,
+        format: 'json',
+      };
+
+      const response = await this.makeRequest<LastFmTrackInfoResponse>(params);
+      
+      // Get the highest quality image available
+      const images = response.track.album?.image || [];
+      const largeImage = images.find(img => img.size === 'extralarge' || img.size === 'large');
+      
+      if (largeImage && largeImage['#text']) {
+        return largeImage['#text'];
+      }
+
+      return null;
+    } catch (error) {
+      // Don't throw error for album art - it's optional
+      if (env.isDevelopment) {
+        console.log(`⚠️  Could not fetch album art for ${artist} - ${track}`);
+      }
+      return null;
     }
   }
 

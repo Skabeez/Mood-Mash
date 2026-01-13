@@ -3,8 +3,6 @@
  * Manages and validates environment variables for the app
  */
 
-import Constants from 'expo-constants';
-
 interface EnvConfig {
   groqApiKey: string;
   lastfmApiKey: string;
@@ -18,13 +16,14 @@ interface EnvConfig {
  * Gets environment variable with validation
  */
 function getEnvVar(key: string): string {
-  // Try to get from expo-constants extra config first
-  const value = Constants.expoConfig?.extra?.[key] || process.env[key];
+  // In Expo, environment variables must have EXPO_PUBLIC_ prefix to be accessible
+  const expoKey = `EXPO_PUBLIC_${key}`;
+  const value = process.env[expoKey];
   
   if (!value || value.includes('your_') || value.includes('_here')) {
     throw new Error(
-      `Missing or invalid environment variable: ${key}\n` +
-      `Please set this in your .env file or app.config.js`
+      `Missing or invalid environment variable: ${expoKey}\n` +
+      `Please set this in your .env file`
     );
   }
   
@@ -57,7 +56,8 @@ function validateEnv(): void {
   const missing: string[] = [];
 
   for (const varName of requiredVars) {
-    const value = Constants.expoConfig?.extra?.[varName] || process.env[varName];
+    const expoKey = `EXPO_PUBLIC_${varName}`;
+    const value = process.env[expoKey];
     if (!value || value.includes('your_') || value.includes('_here')) {
       missing.push(varName);
     }

@@ -322,6 +322,11 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     paddingHorizontal: 20,
     paddingVertical: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 5,
   },
   userBubble: {
     backgroundColor: '#9333EA', // purple-600
@@ -351,12 +356,7 @@ const styles = StyleSheet.create({
     marginTop: designSystem.spacing[6],
   },
   inputContainer: {
-    paddingHorizontal: designSystem.spacing[4],
-    paddingBottom: designSystem.spacing[6],
-    paddingTop: designSystem.spacing[3],
-    backgroundColor: 'rgba(17, 24, 35, 0.8)', // gray-900/80
-    borderTopWidth: 1,
-    borderTopColor: '#1F2937', // gray-800
+    backgroundColor: 'transparent',
   },
   loadingContainer: {
     paddingVertical: designSystem.spacing[4],

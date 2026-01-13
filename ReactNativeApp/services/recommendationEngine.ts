@@ -85,13 +85,13 @@ export class RecommendationEngine {
       }
 
       // Step 4: Categorize tracks
-      const highlight = this.selectHighlight(allTracks, intent);
+      const highlight = await this.selectHighlight(allTracks, intent);
       const excludeIds = [highlight.id];
       
-      const deepCuts = this.selectDeepCuts(allTracks, excludeIds);
+      const deepCuts = await this.selectDeepCuts(allTracks, excludeIds);
       excludeIds.push(...deepCuts.map(r => r.id));
       
-      const mainstream = this.selectMainstream(allTracks, excludeIds);
+      const mainstream = await this.selectMainstream(allTracks, excludeIds);
 
       const recommendations: Recommendation[] = [
         highlight,
@@ -222,7 +222,7 @@ export class RecommendationEngine {
   /**
    * Selects the highlight track (most relevant)
    */
-  selectHighlight(tracks: YouTubeVideo[], intent: DeepSeekIntent): Recommendation {
+  async selectHighlight(tracks: YouTubeVideo[], intent: DeepSeekIntent): Promise<Recommendation> {
     if (tracks.length === 0) {
       return this.createFallbackRecommendation('highlight');
     }
@@ -236,13 +236,13 @@ export class RecommendationEngine {
     // Sort by score
     scoredTracks.sort((a, b) => b.score - a.score);
 
-    return this.convertToRecommendation(scoredTracks[0].track, 'highlight');
+    return await this.convertToRecommendation(scoredTracks[0].track, 'highlight');
   }
 
   /**
    * Selects deep cut tracks (niche, lower view count)
    */
-  selectDeepCuts(tracks: YouTubeVideo[], exclude: string[]): Recommendation[] {
+  async selectDeepCuts(tracks: YouTubeVideo[], exclude: string[]): Promise<Recommendation[]> {
     const available = tracks.filter((t) => !exclude.includes(t.id));
     
     if (available.length === 0) {
@@ -252,15 +252,19 @@ export class RecommendationEngine {
     // Diversify and limit
     const diversified = this.diversifyArtists(available, 1);
     
-    return diversified
-      .slice(0, 5)
-      .map((track) => this.convertToRecommendation(track, 'deep-cut'));
+    const recommendations = await Promise.all(
+      diversified
+        .slice(0, 5)
+        .map((track) => this.convertToRecommendation(track, 'deep-cut'))
+    );
+    
+    return recommendations;
   }
 
   /**
    * Selects mainstream tracks (popular, high view count)
    */
-  selectMainstream(tracks: YouTubeVideo[], exclude: string[]): Recommendation[] {
+  async selectMainstream(tracks: YouTubeVideo[], exclude: string[]): Promise<Recommendation[]> {
     const available = tracks.filter((t) => !exclude.includes(t.id));
     
     if (available.length === 0) {
@@ -270,9 +274,13 @@ export class RecommendationEngine {
     // Diversify and limit
     const diversified = this.diversifyArtists(available, 1);
     
-    return diversified
-      .slice(0, 5)
-      .map((track) => this.convertToRecommendation(track, 'mainstream'));
+    const recommendations = await Promise.all(
+      diversified
+        .slice(0, 5)
+        .map((track) => this.convertToRecommendation(track, 'mainstream'))
+    );
+    
+    return recommendations;
   }
 
   /**
@@ -376,22 +384,40 @@ Please write a friendly, conversational response explaining why these tracks mat
   }
 
   /**
-   * Converts YouTube video to Recommendation type
+   * Converts YouTube video to Recommendation type with Last.fm album art
    */
-  private convertToRecommendation(
+  private async convertToRecommendation(
     video: YouTubeVideo,
     type: RecommendationType
-  ): Recommendation {
+  ): Promise<Recommendation> {
     // Extract artist and title from video title
     const parts = video.title.split('-');
     const artist = parts.length > 1 ? parts[0].trim() : video.channelTitle;
     const title = parts.length > 1 ? parts.slice(1).join('-').trim() : video.title;
 
+    // Clean up title (remove parentheses content like (Official Video), (Lyrics), etc.)
+    const cleanTitle = title.replace(/\(.*?\)/g, '').replace(/\[.*?\]/g, '').trim();
+
+    // Try to fetch album art from Last.fm
+    let albumArt = video.thumbnail; // Fallback to YouTube thumbnail
+    
+    try {
+      const lastfmArt = await lastfmClient.getTrackInfo(artist, cleanTitle);
+      if (lastfmArt) {
+        albumArt = lastfmArt;
+      }
+    } catch (error) {
+      // Silently fall back to YouTube thumbnail
+      if (env.isDevelopment) {
+        console.log(`Using YouTube thumbnail for ${artist} - ${cleanTitle}`);
+      }
+    }
+
     return {
       id: video.id,
-      title: title.replace(/\(.*?\)/g, '').trim(), // Remove parentheses content
+      title: cleanTitle,
       artist: artist,
-      albumArt: video.thumbnail,
+      albumArt: albumArt,
       youtubeId: video.id,
       type: type,
       duration: video.duration || '0:00',

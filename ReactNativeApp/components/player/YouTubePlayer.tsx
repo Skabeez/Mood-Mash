@@ -1,12 +1,10 @@
 /**
  * YouTube Player Component
- * WebView-based YouTube IFrame Player with full control API
+ * Platform-aware YouTube player (iframe for web, WebView for native)
  */
 
-import React, { useRef, useImperativeHandle, forwardRef, useState } from 'react';
-import { View, StyleSheet, ActivityIndicator } from 'react-native';
-import { WebView } from 'react-native-webview';
-import type { WebViewMessageEvent } from 'react-native-webview';
+import React, { useRef, useImperativeHandle, forwardRef, useState, useEffect } from 'react';
+import { View, StyleSheet, ActivityIndicator, Platform } from 'react-native';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -33,259 +31,97 @@ export interface YouTubePlayerRef {
   loadVideo: (videoId: string) => void;
 }
 
-interface PlayerMessage {
-  type: 'ready' | 'stateChange' | 'error' | 'currentTime' | 'duration';
-  state?: number;
-  error?: string;
-  time?: number;
-  duration?: number;
-}
-
 // ============================================================================
-// YOUTUBE PLAYER COMPONENT
+// WEB YOUTUBE PLAYER (IFRAME)
 // ============================================================================
 
-const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(
+const YouTubePlayerWeb = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(
   ({ videoId, onReady, onStateChange, onError, autoplay = false, style }, ref) => {
-    const webViewRef = useRef<WebView>(null);
-    const [isLoading, setIsLoading] = useState(true);
-    const resolveMapRef = useRef<Map<string, (value: any) => void>>(new Map());
+    const [loading, setLoading] = useState(true);
+    const [player, setPlayer] = useState<any>(null);
+    const playerIdRef = useRef(`youtube-player-${Math.random().toString(36).substr(2, 9)}`);
 
-    /**
-     * Map YouTube player state codes to readable strings
-     */
-    const mapPlayerState = (stateCode: number): PlayerState => {
-      switch (stateCode) {
-        case -1:
-          return 'unstarted';
-        case 0:
-          return 'ended';
-        case 1:
-          return 'playing';
-        case 2:
-          return 'paused';
-        case 3:
-          return 'buffering';
-        case 5:
-          return 'cued';
-        default:
-          return 'unstarted';
+    useEffect(() => {
+      // Load YouTube IFrame API
+      if (typeof window === 'undefined') return;
+
+      // Check if API already loaded
+      // @ts-ignore
+      if (window.YT && window.YT.Player) {
+        initPlayer();
+        return;
       }
-    };
 
-    /**
-     * Send command to YouTube player
-     */
-    const sendCommand = (command: string, args?: any) => {
-      const script = args !== undefined
-        ? `player.${command}(${JSON.stringify(args)});`
-        : `player.${command}();`;
-      
-      webViewRef.current?.injectJavaScript(script);
-    };
+      // Load the API
+      const tag = document.createElement('script');
+      tag.src = 'https://www.youtube.com/iframe_api';
+      const firstScriptTag = document.getElementsByTagName('script')[0];
+      firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
 
-    /**
-     * Send command and wait for response
-     */
-    const sendCommandWithResponse = (command: string, responseType: string): Promise<any> => {
-      return new Promise((resolve) => {
-        const requestId = `${responseType}_${Date.now()}`;
-        resolveMapRef.current.set(requestId, resolve);
+      // @ts-ignore
+      window.onYouTubeIframeAPIReady = initPlayer;
 
-        const script = `
-          (function() {
-            const value = player.${command}();
-            window.ReactNativeWebView.postMessage(JSON.stringify({
-              type: '${responseType}',
-              requestId: '${requestId}',
-              value: value
-            }));
-          })();
-        `;
+      return () => {
+        if (player) {
+          player.destroy();
+        }
+      };
+    }, []);
 
-        webViewRef.current?.injectJavaScript(script);
+    useEffect(() => {
+      if (player && videoId) {
+        player.loadVideoById(videoId);
+      }
+    }, [videoId, player]);
 
-        // Timeout after 5 seconds
-        setTimeout(() => {
-          if (resolveMapRef.current.has(requestId)) {
-            resolveMapRef.current.delete(requestId);
-            resolve(0);
-          }
-        }, 5000);
+    const initPlayer = () => {
+      // @ts-ignore
+      const ytPlayer = new window.YT.Player(playerIdRef.current, {
+        videoId,
+        playerVars: {
+          autoplay: autoplay ? 1 : 0,
+          controls: 1,
+          modestbranding: 1,
+          rel: 0,
+        },
+        events: {
+          onReady: (event: any) => {
+            setPlayer(event.target);
+            setLoading(false);
+            onReady?.();
+          },
+          onStateChange: (event: any) => {
+            const states: { [key: number]: PlayerState } = {
+              '-1': 'unstarted',
+              0: 'ended',
+              1: 'playing',
+              2: 'paused',
+              3: 'buffering',
+              5: 'cued',
+            };
+            onStateChange?.(states[event.data] || 'unstarted');
+          },
+          onError: (event: any) => {
+            onError?.(event.data.toString());
+          },
+        },
       });
     };
 
-    /**
-     * Handle messages from WebView
-     */
-    const handleMessage = (event: WebViewMessageEvent) => {
-      try {
-        const message: PlayerMessage = JSON.parse(event.nativeEvent.data);
-
-        switch (message.type) {
-          case 'ready':
-            setIsLoading(false);
-            onReady?.();
-            break;
-
-          case 'stateChange':
-            if (message.state !== undefined) {
-              const state = mapPlayerState(message.state);
-              onStateChange?.(state);
-            }
-            break;
-
-          case 'error':
-            if (message.error) {
-              onError?.(message.error);
-            }
-            break;
-
-          case 'currentTime':
-          case 'duration':
-            // Handle responses from sendCommandWithResponse
-            const data = message as any;
-            if (data.requestId && resolveMapRef.current.has(data.requestId)) {
-              const resolve = resolveMapRef.current.get(data.requestId);
-              resolve?.(data.value || 0);
-              resolveMapRef.current.delete(data.requestId);
-            }
-            break;
-        }
-      } catch (error) {
-        console.error('Error parsing WebView message:', error);
-      }
-    };
-
-    /**
-     * Expose player controls via ref
-     */
     useImperativeHandle(ref, () => ({
-      play: () => sendCommand('playVideo'),
-      pause: () => sendCommand('pauseVideo'),
-      seekTo: (seconds: number) => sendCommand('seekTo', seconds),
-      setVolume: (volume: number) => sendCommand('setVolume', Math.round(volume * 100)),
-      getCurrentTime: () => sendCommandWithResponse('getCurrentTime', 'currentTime'),
-      getDuration: () => sendCommandWithResponse('getDuration', 'duration'),
-      loadVideo: (newVideoId: string) => sendCommand('loadVideoById', newVideoId),
+      play: () => player?.playVideo(),
+      pause: () => player?.pauseVideo(),
+      seekTo: (seconds: number) => player?.seekTo(seconds, true),
+      setVolume: (volume: number) => player?.setVolume(volume),
+      getCurrentTime: async () => player?.getCurrentTime() || 0,
+      getDuration: async () => player?.getDuration() || 0,
+      loadVideo: (newVideoId: string) => player?.loadVideoById(newVideoId),
     }));
-
-    /**
-     * Generate HTML for YouTube IFrame Player
-     */
-    const generateHTML = () => `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-          <style>
-            * {
-              margin: 0;
-              padding: 0;
-              box-sizing: border-box;
-            }
-            body {
-              background-color: #000;
-              overflow: hidden;
-            }
-            #player {
-              position: absolute;
-              top: 0;
-              left: 0;
-              width: 100%;
-              height: 100%;
-            }
-          </style>
-        </head>
-        <body>
-          <div id="player"></div>
-          
-          <script src="https://www.youtube.com/iframe_api"></script>
-          <script>
-            let player;
-            let isReady = false;
-
-            // Initialize player when API is ready
-            function onYouTubeIframeAPIReady() {
-              player = new YT.Player('player', {
-                videoId: '${videoId}',
-                playerVars: {
-                  autoplay: ${autoplay ? 1 : 0},
-                  controls: 0,
-                  disablekb: 1,
-                  fs: 0,
-                  modestbranding: 1,
-                  playsinline: 1,
-                  rel: 0,
-                  showinfo: 0,
-                  iv_load_policy: 3,
-                  cc_load_policy: 0,
-                },
-                events: {
-                  onReady: onPlayerReady,
-                  onStateChange: onPlayerStateChange,
-                  onError: onPlayerError,
-                }
-              });
-            }
-
-            function onPlayerReady(event) {
-              isReady = true;
-              postMessage({ type: 'ready' });
-            }
-
-            function onPlayerStateChange(event) {
-              postMessage({ 
-                type: 'stateChange', 
-                state: event.data 
-              });
-            }
-
-            function onPlayerError(event) {
-              const errorMessages = {
-                2: 'Invalid video ID',
-                5: 'HTML5 player error',
-                100: 'Video not found',
-                101: 'Video not allowed to be played in embedded players',
-                150: 'Video not allowed to be played in embedded players',
-              };
-              
-              postMessage({ 
-                type: 'error', 
-                error: errorMessages[event.data] || 'Unknown error' 
-              });
-            }
-
-            function postMessage(data) {
-              if (window.ReactNativeWebView) {
-                window.ReactNativeWebView.postMessage(JSON.stringify(data));
-              }
-            }
-
-            // Prevent scrolling
-            document.addEventListener('touchmove', function(e) {
-              e.preventDefault();
-            }, { passive: false });
-          </script>
-        </body>
-      </html>
-    `;
 
     return (
       <View style={[styles.container, style]}>
-        <WebView
-          ref={webViewRef}
-          source={{ html: generateHTML() }}
-          onMessage={handleMessage}
-          allowsInlineMediaPlayback
-          mediaPlaybackRequiresUserAction={false}
-          javaScriptEnabled
-          domStorageEnabled
-          scrollEnabled={false}
-          bounces={false}
-          style={styles.webView}
-        />
-        {isLoading && (
+        <div id={playerIdRef.current} style={{ width: '100%', height: '100%' }}></div>
+        {loading && (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color="#9333EA" />
           </View>
@@ -295,23 +131,101 @@ const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(
   }
 );
 
-YouTubePlayer.displayName = 'YouTubePlayer';
+// ============================================================================
+// NATIVE YOUTUBE PLAYER (WEBVIEW)
+// ============================================================================
+
+const YouTubePlayerNative = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(
+  ({ videoId, onReady, onStateChange, onError, autoplay = false, style }, ref) => {
+    // Import WebView dynamically for native platforms
+    const WebView = require('react-native-webview').WebView;
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <style>
+            * { margin: 0; padding: 0; }
+            body { background: #000; }
+            iframe {
+              position: absolute;
+              top: 0;
+              left: 0;
+              width: 100%;
+              height: 100%;
+              border: none;
+            }
+          </style>
+        </head>
+        <body>
+          <iframe
+            src="https://www.youtube.com/embed/${videoId}?autoplay=${autoplay ? 1 : 0}&playsinline=1&rel=0&modestbranding=1"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowfullscreen
+          ></iframe>
+        </body>
+      </html>
+    `;
+
+    useEffect(() => {
+      if (onReady) {
+        const timer = setTimeout(() => onReady(), 1000);
+        return () => clearTimeout(timer);
+      }
+    }, []);
+
+    useImperativeHandle(ref, () => ({
+      play: () => {},
+      pause: () => {},
+      seekTo: (seconds: number) => {},
+      setVolume: (volume: number) => {},
+      getCurrentTime: async () => 0,
+      getDuration: async () => 0,
+      loadVideo: (newVideoId: string) => {},
+    }));
+
+    return (
+      <View style={[styles.container, style]}>
+        <WebView
+          source={{ html: htmlContent }}
+          style={styles.webview}
+          allowsFullscreenVideo
+          mediaPlaybackRequiresUserAction={false}
+          javaScriptEnabled
+        />
+      </View>
+    );
+  }
+);
+
+// ============================================================================
+// EXPORT PLATFORM-SPECIFIC PLAYER
+// ============================================================================
+
+const YouTubePlayer = Platform.OS === 'web' ? YouTubePlayerWeb : YouTubePlayerNative;
+
+export default YouTubePlayer;
+
+// ============================================================================
+// STYLES
+// ============================================================================
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
+    width: '100%',
+    height: '100%',
     backgroundColor: '#000',
   },
-  webView: {
+  webview: {
     flex: 1,
-    backgroundColor: 'transparent',
+    backgroundColor: '#000',
   },
   loadingContainer: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#000',
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
   },
 });
 
-export default YouTubePlayer;
